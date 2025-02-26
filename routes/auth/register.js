@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const User = require('../../models/User');
 const Log = require('../../models/Logs'); // Add this line to require the Logs model
 const sendEmail = require('../../utils/email');
