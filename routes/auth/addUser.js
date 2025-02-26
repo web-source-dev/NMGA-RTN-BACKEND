@@ -5,7 +5,7 @@ const Log = require('../../models/Logs');
 const sendEmail = require('../../utils/email');
 const InvitationEmail = require('../../utils/EmailTemplates/InvitationEmail');
 const crypto = require('crypto');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 router.post('/add-user', async (req, res) => {
     const { name, email, role, businessName } = req.body;
