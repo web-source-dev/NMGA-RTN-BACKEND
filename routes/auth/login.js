@@ -4,8 +4,6 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../../models/User');
 const Log = require('../../models/Logs'); // Add this line to require the Logs model
-const sendEmail = require('../../utils/email');
-const loginEmail = require('../../utils/EmailTemplates/loginEmail');
 const Announcement = require('../../models/Announcments'); // Add this line to require the Announcement model
 const { sendAuthMessage } = require('../../utils/message');
 const { createNotification } = require('../Common/Notification');
@@ -21,6 +19,15 @@ router.post('/', async (req, res) => {
 
         if (user.isBlocked) {
             return res.status(403).json({ message: 'User is blocked' });
+        }
+        // Check if email is verified (skip for admin login with login_key)
+        if (!user.isVerified && !login_key) {
+            return res.status(403).json({ 
+                message: 'Email not verified. Please verify your email before logging in.',
+                needsVerification: true,
+                userId: user._id,
+                email: user.email
+            });
         }
 
         let isPasswordMatch = false;
@@ -74,16 +81,6 @@ router.post('/', async (req, res) => {
         }
 
         const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-
-        const loginEmailData = {
-            name: user.name,
-            time: new Date().toLocaleString(),
-            location: req.ip || 'Unknown',
-            device: req.headers['user-agent'] || 'Unknown'
-        };
-
-        const emailContent = loginEmail(loginEmailData);
-        await sendEmail(user.email, 'New Login Detected', emailContent);
 
         if (user.phone) {
             const userInfo = {

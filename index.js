@@ -7,9 +7,32 @@ const path = require('path');
 const checkDealExpiration = require('./utils/dealExpirationCheck');
 const { initializeTwilio } = require('./utils/message');
 const backupToGoogleSheets = require('./utils/googleSheetsBackup');
-
+const { initializeScheduler } = require('./utils/scheduler');
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 5000;
+
+// Setup Socket.IO
+const http = require('http');
+const server = http.createServer(app);
+const { Server } = require('socket.io');
+const io = new Server(server, {
+  cors: {
+    origin: "*", // In production, replace with your frontend URL
+    methods: ["GET", "POST"]
+  }
+});
+
+// Make socket.io instance available to other modules
+global.io = io;
+
+// Socket.IO connection handling
+io.on('connection', (socket) => {
+  console.log('A client connected', socket.id);
+  
+  socket.on('disconnect', () => {
+    console.log('Client disconnected', socket.id);
+  });
+});
 
 // Middleware
 app.use(cors());
@@ -41,6 +64,8 @@ mongoose.connect(process.env.MONGODB_URI, {
     process.exit(1);
   });
 
+  initializeScheduler();
+
 app.use('/auth', require('./routes/auth/auth'));
 app.use('/common', require('./routes/Common/common'));
 app.use('/deals', require('./routes/Deals/Deals'));
@@ -49,6 +74,8 @@ app.use('/member', require('./routes/Member/memberRoutes'));
 app.use('/chat', require('./routes/Deals/Chat'));
 app.use('/api/notifications', require('./routes/Common/Notification').router);
 app.use("/api/splash", require("./routes/Common/SplashRoute"))
+app.use("/api/members", require("./routes/Deals/TopMembers"))
+app.use("/api/users", require("./routes/User"))
 
 // Add this near the start of your application
 const validateEnvVariables = () => {
@@ -78,6 +105,7 @@ console.log('Environment Check:', {
 // Initialize Twilio after environment variables are loaded
 initializeTwilio();
 
-app.listen(port, () => {
+// Replace app.listen with server.listen
+server.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });

@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const Deal = require('../../models/Deals');
 const Log = require('../../models/Logs');
 const { createNotification, notifyUsersByRole } = require('../Common/Notification');
+const { broadcastDealUpdate } = require('../../utils/dealUpdates');
 
 router.delete('/:dealId', async (req, res) => {
   try {
@@ -66,6 +67,9 @@ router.delete('/:dealId', async (req, res) => {
       onModel: 'Deal',
       priority: 'medium'
     });
+
+    // Broadcast deal deletion before actually deleting it
+    broadcastDealUpdate({...deal.toObject(), _id: deal._id.toString()}, 'deleted');
 
     await deal.deleteOne();
     res.status(200).json({ message: 'Deal deleted successfully' });

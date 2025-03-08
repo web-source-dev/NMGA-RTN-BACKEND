@@ -6,6 +6,7 @@ const User = require('../../models/User');
 const sendEmail = require('../../utils/email');
 const { sendDealMessage } = require('../../utils/message');
 const { createNotification, notifyUsersByRole } = require('../Common/Notification');
+const DailyCommitmentSummary = require('../../models/DailyCommitmentSummary');
 const router = express.Router();
 
 // Create a new commitment (Get Deal)
@@ -32,14 +33,6 @@ router.post("/buy/:dealId", async (req, res) => {
         });
       }
 
-      // Validate minimum quantity
-      if (quantity < deal.minQtyForDiscount) {
-        return res.status(400).json({
-          error: "Invalid quantity",
-          message: `Minimum quantity required for discount is ${deal.minQtyForDiscount}`
-        });
-      }
-
       // Calculate total price using discount price
       const totalPrice = quantity * deal.discountPrice;
 
@@ -63,19 +56,6 @@ router.post("/buy/:dealId", async (req, res) => {
   
       // Update the deal
       deal.commitments.push(commitment._id);
-      
-      // Update notification history
-      if (!deal.notificationHistory) {
-        deal.notificationHistory = new Map();
-      }
-      const notificationEntry = {
-        userId: userId,
-        sentAt: new Date()
-      };
-      const userNotifications = deal.notificationHistory.get(userId.toString()) || [];
-      userNotifications.push(notificationEntry);
-      deal.notificationHistory.set(userId.toString(), userNotifications);
-      
       await deal.save();
   
       // Add success log
@@ -84,68 +64,46 @@ router.post("/buy/:dealId", async (req, res) => {
         type: 'success',
         user_id: userId
       });
-  
-      // Send notifications
-      const CommitmentNotificationTemplate = require('../../utils/EmailTemplates/CommitmentNotificationTemplate');
+
+      // Update or create daily commitment summary
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      let summary = await DailyCommitmentSummary.findOne({
+        date: today,
+        userId: userId,
+        distributorId: deal.distributor
+      });
+
+      if (!summary) {
+        summary = new DailyCommitmentSummary({
+          date: today,
+          userId: userId,
+          distributorId: deal.distributor,
+          commitments: [],
+          totalCommitments: 0,
+          totalQuantity: 0,
+          totalAmount: 0
+        });
+      }
+
+      // Add new commitment to summary
+      summary.commitments.push({
+        commitmentId: commitment._id,
+        dealId: dealId,
+        quantity: quantity,
+        totalPrice: totalPrice,
+        dealName: deal.name,
+        originalCost: deal.originalCost,
+        discountPrice: deal.discountPrice
+      });
+
+      // Update summary totals
+      summary.totalCommitments += 1;
+      summary.totalQuantity += quantity;
+      summary.totalAmount += totalPrice;
       
-      // Send email to user
-      await sendEmail(
-        user.email,
-        'Commitment Confirmation',
-        CommitmentNotificationTemplate.user(
-          user.name, 
-          deal.name, 
-          quantity, 
-          totalPrice, 
-          deal.originalCost, 
-          deal.discountPrice
-        )
-      );
-
-      // Send email to distributor
-      await sendEmail(
-        distributor.email,
-        'New Commitment Received',
-        CommitmentNotificationTemplate.distributor(
-          user.name, 
-          deal.name, 
-          quantity, 
-          totalPrice, 
-          deal.originalCost, 
-          deal.discountPrice
-        )
-      );
-
-      // Send SMS notifications
-      if (user.phone) {
-        try {
-            await sendDealMessage.orderConfirmation(user.phone, {
-                dealName: deal.name,
-                quantity: quantity,
-                totalPrice: totalPrice,
-                originalCost: deal.originalCost,
-                discountPrice: deal.discountPrice,
-                savings: (deal.originalCost - deal.discountPrice) * quantity
-            });
-        } catch (error) {
-            console.error('Failed to send order confirmation SMS:', error);
-        }
-      }
-
-      if (distributor.phone) {
-        try {
-            await sendDealMessage.distributorNotification(distributor.phone, {
-                dealName: deal.name,
-                quantity: quantity,
-                totalPrice: totalPrice,
-                buyerName: user.name,
-                originalCost: deal.originalCost,
-                discountPrice: deal.discountPrice
-            });
-        } catch (error) {
-            console.error('Failed to send distributor notification SMS:', error);
-        }
-      }
+      await summary.save();
   
       // Notify distributor about new commitment
       await createNotification({
@@ -165,7 +123,7 @@ router.post("/buy/:dealId", async (req, res) => {
         type: 'commitment',
         subType: 'commitment_created',
         title: 'New Deal Commitment',
-        message: `${user.name} has committed to deal "${deal.name}" by distributor ${deal.distributor.name}`,
+        message: `${user.name} has committed to deal "${deal.name}" by distributor ${distributor.name}`,
         relatedId: commitment._id,
         onModel: 'Commitment',
         priority: 'medium'

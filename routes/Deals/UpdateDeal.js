@@ -4,6 +4,7 @@ const mongoose = require('mongoose');
 const Deal = require('../../models/Deals');
 const Log = require('../../models/Logs');
 const { createNotification, notifyUsersByRole } = require('../Common/Notification');
+const { broadcastDealUpdate, broadcastSingleDealUpdate } = require('../../utils/dealUpdates');
 
 router.put('/:dealId', async (req, res) => {
   try {
@@ -58,6 +59,10 @@ router.put('/:dealId', async (req, res) => {
       });
       return res.status(404).json({ message: 'Deal not found' });
     }
+
+    // Broadcast real-time update
+    broadcastDealUpdate(deal, 'updated');
+    broadcastSingleDealUpdate(dealId, deal);
 
     // Create notification for members who have favorited or committed to this deal
     const notificationMessage = `Deal "${deal.name}" has been updated. Changes: ${Object.keys(updateData).join(', ')}`;

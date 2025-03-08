@@ -5,6 +5,7 @@ const Deal = require('../../models/Deals');
 const Log = require('../../models/Logs');
 const User = require('../../models/User');
 const { createNotification, notifyUsersByRole } = require('../Common/Notification');
+const { broadcastDealUpdate, broadcastSingleDealUpdate } = require('../../utils/dealUpdates');
 
 router.patch('/:dealId/status', async (req, res) => {
   try {
@@ -40,6 +41,10 @@ router.patch('/:dealId/status', async (req, res) => {
       });
       return res.status(404).json({ message: 'Deal not found' });
     }
+
+    // Broadcast real-time updates for status change
+    broadcastDealUpdate(deal, 'updated');
+    broadcastSingleDealUpdate(dealId, deal);
 
     // Notify members who have committed to this deal
     const commitments = await mongoose.model('Commitment').find({ 

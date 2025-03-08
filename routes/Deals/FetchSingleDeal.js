@@ -25,7 +25,7 @@ router.get('/deal/:dealId', async (req, res) => {
 
     // Add log entry for deal view with enhanced information
     await Log.create({
-      message: `Deal "${deal.name}" viewed - Views: ${deal.views}, Impressions: ${deal.impressions}, Original Cost: $${deal.originalCost}, Discount Price: $${deal.discountPrice}, Min Qty for Discount: ${deal.minQtyForDiscount}`,
+      message: `Deal "${deal.name}" viewed - Views: ${deal.views}, Impressions: ${deal.impressions}, Original Cost: $${deal.originalCost}, Discount Price: $${deal.discountPrice}`,
       type: 'info',
       user_id: deal.distributor._id
     });
@@ -34,12 +34,19 @@ router.get('/deal/:dealId', async (req, res) => {
     const savingsPerUnit = deal.originalCost - deal.discountPrice;
     const savingsPercentage = ((savingsPerUnit / deal.originalCost) * 100).toFixed(2);
 
+    // Get total commitments for this deal
+    const totalCommitments = await Deal.aggregate([
+      { $match: { _id: new mongoose.Types.ObjectId(dealId) } },
+      { $project: { totalCommitments: { $size: "$commitments" } } }
+    ]);
+
     // Add calculated fields to response
     const response = {
       ...deal.toObject(),
       savingsPerUnit,
       savingsPercentage,
-      totalPotentialSavings: savingsPerUnit * deal.minQtyForDiscount
+      totalPotentialSavings: savingsPerUnit * deal.minQtyForDiscount,
+      totalCommitments: totalCommitments[0]?.totalCommitments || 0
     };
 
     res.status(200).json(response);

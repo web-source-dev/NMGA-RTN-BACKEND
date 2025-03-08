@@ -47,6 +47,26 @@ const CommitmentNotificationTemplate = {
     </ul>
 
     <a href="${FRONTEND_URL}/dashboard" class="button">Review Commitment</a>
+  `),
+  
+  statusUpdate: (userName, dealName, status, quantity, totalPrice) => baseTemplate(`
+    <h2>Commitment Status Update</h2>
+    <p>Dear ${userName},</p>
+    <p>The status of your commitment for the deal <strong>${dealName}</strong> has been updated.</p>
+    
+    <h3>Commitment Details:</h3>
+    <ul>
+      <li>Deal: ${dealName}</li>
+      <li>Quantity: ${quantity}</li>
+      <li>Total Price: $${totalPrice.toLocaleString()}</li>
+      <li>Status: <strong>${status.charAt(0).toUpperCase() + status.slice(1)}</strong></li>
+    </ul>
+
+    <p>${status === 'approved' 
+      ? 'Your commitment has been approved by the distributor. You will be contacted with further instructions regarding payment and delivery.' 
+      : 'Unfortunately, your commitment has been declined by the distributor. Please check your dashboard for more information or contact the distributor directly if you have any questions.'}</p>
+
+    <a href="${FRONTEND_URL}/dashboard" class="button">View Your Commitments</a>
   `)
 };
 

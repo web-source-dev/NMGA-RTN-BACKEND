@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true ,lowercase: true,trim: true},
   password: { type: String },
   role: {
     type: String,
@@ -32,6 +32,14 @@ const userSchema = new mongoose.Schema({
   login_key:{
     type: String,
     default: null
+  },
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
+  verificationOTP: {
+    code: String,
+    expiresAt: Date
   },
   resetPasswordToken: String,
   resetPasswordExpires: Date,

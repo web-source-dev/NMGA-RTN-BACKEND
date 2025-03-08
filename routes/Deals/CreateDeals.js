@@ -10,6 +10,7 @@ const path = require('path');
 const newDealTemplate = require('../../utils/EmailTemplates/NewDealTemplate');
 const { sendDealMessage } = require('../../utils/message');
 const { createNotification, notifyUsersByRole } = require('../Common/Notification');
+const { broadcastDealUpdate } = require('../../utils/dealUpdates');
 
 // Create a new deal
 router.post('/', async (req, res) => {
@@ -84,6 +85,9 @@ router.post('/', async (req, res) => {
       commitments: [],
       notificationHistory: new Map()
     });
+
+    // Broadcast real-time update for the new deal
+    broadcastDealUpdate(newDeal, 'created');
 
     // Create notifications for all members
     await notifyUsersByRole('member', {

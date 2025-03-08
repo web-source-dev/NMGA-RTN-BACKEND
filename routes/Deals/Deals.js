@@ -15,6 +15,8 @@ router.use('/bulk', require('./BulkUpload'));
 router.use('/order', require('./Order'));
 router.use('/default', require('./DefualtPage'));
 router.use('/singleCommitment/deal',require('./SingleDealCommitments'))
+router.use('/allDeals',require('./AllDeals'))
+router.use('/allDeals/deal-analytics',require('./GetDealAnalytics'))
 
 
 module.exports = router;

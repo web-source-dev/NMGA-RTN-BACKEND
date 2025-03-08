@@ -46,7 +46,8 @@ router.get('/:distributorId', async (req, res) => {
     // Fetch deals with populated distributor info (No limit applied)
     let deals = await Deal.find(filter)
       .sort(sort)
-      .populate('distributor', 'name email businessName contactPerson phone logo');
+      .populate('distributor', 'name email businessName contactPerson phone logo')
+      .populate('commitments', 'quantity');
 
     // Add calculated fields to each deal
     deals = deals.map(deal => {
@@ -56,20 +57,13 @@ router.get('/:distributorId', async (req, res) => {
         ...deal.toObject(),
         savingsPerUnit,
         savingsPercentage,
-        totalPotentialSavings: savingsPerUnit * deal.minQtyForDiscount
+        totalPotentialSavings: savingsPerUnit * deal.minQtyForDiscount,
+        totalCommitmentQuantity: deal.commitments.reduce((total, commitment) => total + commitment.quantity, 0)
       };
     });
 
     // Get total count for logging purposes
     const totalDeals = await Deal.countDocuments(filter);
-
-    // Log the fetch request
-    await Log.create({
-      message: `Deals fetched with filters: ${Object.keys(filter).join(', ')} - Found ${deals.length} deals`,
-      type: 'info',
-      user_id: req.user?.id
-    });
-
     res.json({
       deals,
       totalDeals
