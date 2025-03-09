@@ -34,7 +34,7 @@ router.post('/', async (req, res) => {
     const { name, email, password, role, businessName, contactPerson, phone } = req.body;
     console.log('data received', req.body);
     try {
-        const existingUser = await User.findOne({ email });
+        const user = await User.findOne({ email: email.toLowerCase() });
         if (existingUser) {
             return res.status(400).json({ message: 'Email already exists' });
         }
@@ -167,7 +167,7 @@ router.post('/resend-verification', async (req, res) => {
     const { email } = req.body;
     
     try {
-        const user = await User.findOne({ email });
+        const user = await User.findOne({ email: email.toLowerCase() });
         
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
