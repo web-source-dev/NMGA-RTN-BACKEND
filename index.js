@@ -75,7 +75,9 @@ app.use('/chat', require('./routes/Deals/Chat'));
 app.use('/api/notifications', require('./routes/Common/Notification').router);
 app.use("/api/splash", require("./routes/Common/SplashRoute"))
 app.use("/api/members", require("./routes/Deals/TopMembers"))
+app.use("/api/distributors", require("./routes/Deals/TopDistributors"))
 app.use("/api/users", require("./routes/User"))
+app.use("/api/contact", require("./routes/ContactUs"))
 
 // Add this near the start of your application
 const validateEnvVariables = () => {

@@ -34,7 +34,7 @@ router.post('/', async (req, res) => {
     const { name, email, password, role, businessName, contactPerson, phone } = req.body;
     console.log('data received', req.body);
     try {
-        const user = await User.findOne({ email: email.toLowerCase() });
+        const existingUser = await User.findOne({ email: email.toLowerCase() });
         if (existingUser) {
             return res.status(400).json({ message: 'Email already exists' });
         }

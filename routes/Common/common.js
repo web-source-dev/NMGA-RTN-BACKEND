@@ -24,9 +24,11 @@ router.use('/payments', require('./PaymentRoute'));
 router.use('/commitments', require('./CommitmentRoute'));
 
 // Content routes
+router.use('/latest-deals', require('./latest4Deals'));
 
 // Analytics and reporting routes
 router.use('/analytics', require('./AnalyticsRoute'));
+
 
 // Use routes
 router.use('/user-stats', userStatsRoute);
