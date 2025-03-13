@@ -20,7 +20,7 @@ const sendEmail = async (to, subject, html) => {
 
   try {
     const result = await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+      from: `"RTN Global" <${process.env.EMAIL_USER}>`,
       to: Array.isArray(to) ? to.join(', ') : to,
       subject,
       html,
