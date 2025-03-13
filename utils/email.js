@@ -8,14 +8,13 @@ const sendEmail = async (to, subject, html) => {
     // Don't log the full HTML for security
     htmlLength: html?.length
   });
-
   const transporter = nodemailer.createTransport({
     host: "smtp.zoho.com", // Zoho SMTP Server
     port: 465, // Use 465 for SSL (or 587 for TLS)
     secure: true, // true for SSL (465), false for TLS (587)
     auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
+      user: process.env.EMAIL_USER, // Your Zoho email
+      pass: process.env.EMAIL_PASS, // Your Zoho App Password
     },
   });
 
