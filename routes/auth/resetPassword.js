@@ -25,18 +25,28 @@ router.post('/:token', async (req, res) => {
     user.resetPasswordExpires = undefined;
     await user.save();
 
+    // Send response first to prevent headers issue
     res.status(200).json({ message: 'Password has been reset.' });
 
-    const log = new Log({
-      message: `Security update: ${user.name} has successfully completed password reset procedure`,
-      type: 'success',
-      user_id: user._id
-    });
-    await log.save();
+    // Perform logging and email sending asynchronously
+    setImmediate(async () => {
+      try {
+        const log = new Log({
+          message: `Security update: ${user.name} has successfully completed password reset procedure`,
+          type: 'success',
+          user_id: user._id
+        });
+        await log.save();
 
-    const emailContent = passwordChangedEmail(user.name);
-    await sendEmail(user.email, 'Password Changed Successfully', emailContent);
+        const emailContent = passwordChangedEmail(user.name);
+        await sendEmail(user.email, 'Password Changed Successfully', emailContent);
+      } catch (error) {
+        console.error('Error logging or sending email:', error);
+      }
+    });
+
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: 'Server error' });
   }
 });

@@ -78,6 +78,7 @@ app.use("/api/members", require("./routes/Deals/TopMembers"))
 app.use("/api/distributors", require("./routes/Deals/TopDistributors"))
 app.use("/api/users", require("./routes/User"))
 app.use("/api/contact", require("./routes/ContactUs"))
+app.use("/api/distributor", require("./routes/AllMemberDistributor"))
 
 // Add this near the start of your application
 const validateEnvVariables = () => {

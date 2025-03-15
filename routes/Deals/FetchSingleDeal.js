@@ -18,6 +18,7 @@ router.get('/deal/:dealId', async (req, res) => {
       { $inc: { views: 1 } },
       { new: true }
     ).populate('distributor', 'name email businessName contactPerson phone logo');
+    
 
     if (!deal) {
       return res.status(404).json({ message: 'Deal not found' });
@@ -34,10 +35,25 @@ router.get('/deal/:dealId', async (req, res) => {
     const savingsPerUnit = deal.originalCost - deal.discountPrice;
     const savingsPercentage = ((savingsPerUnit / deal.originalCost) * 100).toFixed(2);
 
-    // Get total commitments for this deal
-    const totalCommitments = await Deal.aggregate([
+    // Get total commitments and quantity for this deal
+    const commitmentStats = await Deal.aggregate([
       { $match: { _id: new mongoose.Types.ObjectId(dealId) } },
-      { $project: { totalCommitments: { $size: "$commitments" } } }
+      {
+        $lookup: {
+          from: 'commitments',
+          localField: 'commitments',
+          foreignField: '_id',
+          as: 'commitmentDetails'
+        }
+      },
+      {
+        $project: {
+          totalCommitments: { $size: "$commitments" },
+          totalCommittedQuantity: {
+            $sum: "$commitmentDetails.quantity"
+          }
+        }
+      }
     ]);
 
     // Add calculated fields to response
@@ -46,7 +62,8 @@ router.get('/deal/:dealId', async (req, res) => {
       savingsPerUnit,
       savingsPercentage,
       totalPotentialSavings: savingsPerUnit * deal.minQtyForDiscount,
-      totalCommitments: totalCommitments[0]?.totalCommitments || 0
+      totalCommitments: commitmentStats[0]?.totalCommitments || 0,
+      totalCommittedQuantity: commitmentStats[0]?.totalCommittedQuantity || 0
     };
 
     res.status(200).json(response);
