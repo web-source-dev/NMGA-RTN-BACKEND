@@ -24,8 +24,29 @@ router.post('/create', validateSplashPage, async (req, res) => {
   }
 
   try {
+    // Ensure timeOfDay is properly formatted as an object
+    const requestData = { ...req.body };
+    
+    // Check if timeOfDay is a string and convert it to the expected object format
+    if (requestData.scheduling && typeof requestData.scheduling.timeOfDay === 'string') {
+      // Parse the timeOfDay string from frontend (expected format: "HH:MM-HH:MM")
+      const timeOfDayParts = requestData.scheduling.timeOfDay.split('-');
+      if (timeOfDayParts.length === 2) {
+        requestData.scheduling.timeOfDay = {
+          start: timeOfDayParts[0].trim(),
+          end: timeOfDayParts[1].trim()
+        };
+      } else {
+        // Fallback to default if format is incorrect
+        requestData.scheduling.timeOfDay = {
+          start: '00:00',
+          end: '23:59'
+        };
+      }
+    }
+    
     const splashPage = new SplashPage({
-      ...req.body,
+      ...requestData,
       analytics: {
         views: 0,
         lastViewed: null
@@ -51,10 +72,15 @@ router.get('/', async (req, res) => {
     const filteredSplashPages = splashPages.filter(page => {
       const startDate = new Date(page.scheduling.startDate);
       const endDate = new Date(page.scheduling.endDate);
-      const startTime = parseInt(page.scheduling.timeOfDay.start.split(':')[0]) * 60 + 
-                       parseInt(page.scheduling.timeOfDay.start.split(':')[1]);
-      const endTime = parseInt(page.scheduling.timeOfDay.end.split(':')[0]) * 60 + 
-                     parseInt(page.scheduling.timeOfDay.end.split(':')[1]);
+      
+      // Add null checks for timeOfDay properties
+      const startTimeStr = page.scheduling.timeOfDay?.start || '00:00';
+      const endTimeStr = page.scheduling.timeOfDay?.end || '23:59';
+      
+      const startTime = parseInt(startTimeStr.split(':')[0]) * 60 + 
+                       parseInt(startTimeStr.split(':')[1]);
+      const endTime = parseInt(endTimeStr.split(':')[0]) * 60 + 
+                     parseInt(endTimeStr.split(':')[1]);
 
       // Check if the splash page is active and within the date range
       const isActive = page.isActive && startDate <= now && endDate >= now;
@@ -232,9 +258,30 @@ router.patch('/:id', validateSplashPage, async (req, res) => {
   }
 
   try {
+    // Ensure timeOfDay is properly formatted as an object
+    const requestData = { ...req.body };
+    
+    // Check if timeOfDay is a string and convert it to the expected object format
+    if (requestData.scheduling && typeof requestData.scheduling.timeOfDay === 'string') {
+      // Parse the timeOfDay string from frontend (expected format: "HH:MM-HH:MM")
+      const timeOfDayParts = requestData.scheduling.timeOfDay.split('-');
+      if (timeOfDayParts.length === 2) {
+        requestData.scheduling.timeOfDay = {
+          start: timeOfDayParts[0].trim(),
+          end: timeOfDayParts[1].trim()
+        };
+      } else {
+        // Fallback to default if format is incorrect
+        requestData.scheduling.timeOfDay = {
+          start: '00:00',
+          end: '23:59'
+        };
+      }
+    }
+    
     const updatedSplashPage = await SplashPage.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      requestData,
       { new: true, runValidators: true }
     );
     if (!updatedSplashPage) {
