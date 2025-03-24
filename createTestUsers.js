@@ -24,7 +24,8 @@ async function createTestUsers() {
         address: "123 Admin Street", 
         logo: "", 
         isBlocked: false, 
-        isVerified: true 
+        isVerified: true,
+        login_key: Math.floor(100000000000 + Math.random() * 900000000000) 
       },
       { 
         name: "Distributor One", 
@@ -37,7 +38,8 @@ async function createTestUsers() {
         address: "456 Distributor Street", 
         logo: "", 
         isBlocked: false, 
-        isVerified: true 
+        isVerified: true,
+        login_key: Math.floor(100000000000 + Math.random() * 900000000000) 
       },
       { 
         name: "Distributor Two", 
@@ -50,20 +52,8 @@ async function createTestUsers() {
         address: "789 Distributor Street", 
         logo: "", 
         isBlocked: false, 
-        isVerified: true 
-      },
-      { 
-        name: "Distributor Three", 
-        email: "distributor3@test.com", 
-        password: hashedPassword, 
-        role: "distributor", 
-        businessName: "Distributor Three Ltd", 
-        contactPerson: "Dist Contact 3", 
-        phone: "1234567893", 
-        address: "101 Distributor Street", 
-        logo: "", 
-        isBlocked: false, 
-        isVerified: true 
+        isVerified: true,
+        login_key: Math.floor(100000000000 + Math.random() * 900000000000) 
       },
       { 
         name: "Member One", 
@@ -76,7 +66,8 @@ async function createTestUsers() {
         address: "111 Member Street", 
         logo: "", 
         isBlocked: false, 
-        isVerified: true 
+        isVerified: true,
+        login_key: Math.floor(100000000000 + Math.random() * 900000000000) 
       },
       { 
         name: "Member Two", 
@@ -89,7 +80,8 @@ async function createTestUsers() {
         address: "222 Member Street", 
         logo: "", 
         isBlocked: false, 
-        isVerified: true 
+        isVerified: true,
+        login_key: Math.floor(100000000000 + Math.random() * 900000000000) 
       },
       { 
         name: "Member Three", 
@@ -102,7 +94,8 @@ async function createTestUsers() {
         address: "333 Member Street", 
         logo: "", 
         isBlocked: false, 
-        isVerified: true 
+        isVerified: true,
+        login_key: Math.floor(100000000000 + Math.random() * 900000000000) 
       },
       { 
         name: "Member Four", 
@@ -115,7 +108,8 @@ async function createTestUsers() {
         address: "444 Member Street", 
         logo: "", 
         isBlocked: false, 
-        isVerified: true 
+        isVerified: true,
+        login_key: Math.floor(100000000000 + Math.random() * 900000000000) 
       },
       { 
         name: "Member Five", 
@@ -128,7 +122,8 @@ async function createTestUsers() {
         address: "555 Member Street", 
         logo: "", 
         isBlocked: false, 
-        isVerified: true 
+        isVerified: true,
+        login_key: Math.floor(100000000000 + Math.random() * 900000000000) 
       },
       { 
         name: "Member Six", 
@@ -141,7 +136,8 @@ async function createTestUsers() {
         address: "666 Member Street", 
         logo: "", 
         isBlocked: false, 
-        isVerified: true 
+        isVerified: true,
+        login_key: Math.floor(100000000000 + Math.random() * 900000000000) 
       }
     ];
 

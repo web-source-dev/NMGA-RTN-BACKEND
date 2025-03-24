@@ -522,6 +522,38 @@ router.post('/user/:userId/avatar', async (req, res) => {
     }
 });
 
+// Modify commitment quantity
+router.put('/commitments/:commitmentId/modify', async (req, res) => {
+  try {
+    const { quantity } = req.body;
+    const commitment = await Commitment.findById(req.params.commitmentId).populate('dealId');
+
+    if (!commitment) {
+      return res.status(404).json({ message: 'Commitment not found' });
+    }
+
+    if (commitment.status !== 'pending') {
+      return res.status(400).json({ message: 'Only pending commitments can be modified' });
+    }
+
+    // Calculate new total price
+    const newTotalPrice = quantity * commitment.dealId.discountPrice;
+
+    // Update commitment
+    commitment.quantity = quantity;
+    commitment.totalPrice = newTotalPrice;
+    await commitment.save();
+
+    res.json({
+      message: 'Commitment quantity modified successfully',
+      commitment
+    });
+  } catch (error) {
+    console.error('Error modifying commitment quantity:', error);
+    res.status(500).json({ message: 'Error modifying commitment quantity' });
+  }
+});
+
 router.post('/user/:userId/password', async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body;
