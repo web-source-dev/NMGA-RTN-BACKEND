@@ -26,6 +26,12 @@ router.get('/distributor-deals', async (req, res) => {
         // Base query
         let query = { distributor: distributorId };
 
+        // Add condition to only get deals with commitments
+        query = {
+            ...query,
+            commitments: { $exists: true, $ne: [] }
+        };
+
         // Search filter
         if (search) {
             query = {
@@ -72,7 +78,7 @@ router.get('/distributor-deals', async (req, res) => {
         // Calculate skip value for pagination
         const skip = (parseInt(page) - 1) * parseInt(limit);
 
-        // Get total count for pagination
+        // Get total count for pagination (this will now only count deals with commitments)
         const totalDeals = await Deal.countDocuments(query);
 
         // Fetch deals with pagination
@@ -88,7 +94,7 @@ router.get('/distributor-deals', async (req, res) => {
             .skip(skip)
             .limit(parseInt(limit));
 
-        // Transform the data to include commitment counts
+        // Transform the data (no need to filter null values anymore)
         const dealsWithStats = deals.map(deal => {
             const commitments = deal.commitments || [];
             let filteredCommitments = commitments;
@@ -97,6 +103,9 @@ router.get('/distributor-deals', async (req, res) => {
             if (commitmentStatus) {
                 filteredCommitments = commitments.filter(c => c.status === commitmentStatus);
             }
+
+            const approvedCommitments = commitments.filter(c => c.status === 'approved');
+            const pendingCommitments = commitments.filter(c => c.status === 'pending');
 
             return {
                 _id: deal._id,
@@ -109,15 +118,20 @@ router.get('/distributor-deals', async (req, res) => {
                 category: deal.category,
                 status: deal.status,
                 dealEndsAt: deal.dealEndsAt,
+                bulkAction: deal.bulkAction,
+                bulkStatus: deal.bulkStatus,
                 createdAt: deal.createdAt,
                 totalCommitments: commitments.length,
                 pendingCommitments: commitments.filter(c => c.status === 'pending').length,
                 approvedCommitments: commitments.filter(c => c.status === 'approved').length,
                 declinedCommitments: commitments.filter(c => c.status === 'declined').length,
-                totalQuantity: filteredCommitments.reduce((sum, c) => sum + c.quantity, 0),
-                totalAmount: filteredCommitments.reduce((sum, c) => sum + c.totalPrice, 0)
+               
+                totalPQuantity: pendingCommitments.reduce((sum, c) => sum + c.quantity, 0),
+                totalPAmount: pendingCommitments.reduce((sum, c) => sum + c.totalPrice, 0),
+                totalQuantity: approvedCommitments.reduce((sum, c) => sum + c.quantity, 0),
+                totalAmount: approvedCommitments.reduce((sum, c) => sum + c.totalPrice, 0)
             };
-        });
+        }) .filter(deal => deal !== null); // Remove null values
 
         res.json({
             success: true,
@@ -152,7 +166,10 @@ router.get('/admin-all-deals', async (req, res) => {
 
         // Base query
         let query = {};
-
+        query = {
+            ...query,
+            commitments: { $exists: true, $ne: [] }
+        };
         // If distributorId is provided, filter by that distributor
         if (distributorId) {
             query.distributor = distributorId;
@@ -234,6 +251,9 @@ router.get('/admin-all-deals', async (req, res) => {
                 filteredCommitments = commitments.filter(c => c.status === commitmentStatus);
             }
 
+            const approvedCommitments = commitments.filter(c => c.status === 'approved');
+            const pendingCommitments = commitments.filter(c => c.status === 'pending');
+
             return {
                 _id: deal._id,
                 name: deal.name,
@@ -246,15 +266,19 @@ router.get('/admin-all-deals', async (req, res) => {
                 status: deal.status,
                 distributor: deal.distributor,
                 dealEndsAt: deal.dealEndsAt,
+                bulkAction: deal.bulkAction,
+                bulkStatus: deal.bulkStatus,
                 createdAt: deal.createdAt,
                 totalCommitments: commitments.length,
                 pendingCommitments: commitments.filter(c => c.status === 'pending').length,
                 approvedCommitments: commitments.filter(c => c.status === 'approved').length,
                 declinedCommitments: commitments.filter(c => c.status === 'declined').length,
-                totalQuantity: filteredCommitments.reduce((sum, c) => sum + c.quantity, 0),
-                totalAmount: filteredCommitments.reduce((sum, c) => sum + c.totalPrice, 0)
+                totalPQuantity: pendingCommitments.reduce((sum, c) => sum + c.quantity, 0),
+                totalPAmount: pendingCommitments.reduce((sum, c) => sum + c.totalPrice, 0),
+                totalQuantity: approvedCommitments.reduce((sum, c) => sum + c.quantity, 0),
+                totalAmount: approvedCommitments.reduce((sum, c) => sum + c.totalPrice, 0)
             };
-        });
+        }).filter(deal => deal!== null); // Remove null values
 
         res.json({
             success: true,
@@ -332,7 +356,9 @@ router.post('/bulk-approve-commitments', async (req, res) => {
         const updatedDeal = await Deal.findByIdAndUpdate(dealId, {
             totalSold,
             totalRevenue,
-            status: 'inactive'
+            status: 'inactive',
+            bulkAction: true,
+            bulkStatus: 'approved'
         }, { new: true });
 
         // Broadcast real-time updates for the deal update
@@ -408,7 +434,9 @@ router.post('/bulk-decline-commitments', async (req, res) => {
         }
 
         const updatedDeal = await Deal.findByIdAndUpdate(dealId, {
-            status: 'inactive'
+            status: 'inactive',
+            bulkAction: true,
+            bulkStatus: 'rejected'
         }, { new: true });
 
         // Broadcast real-time updates for the deal update

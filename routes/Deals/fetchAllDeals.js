@@ -24,19 +24,25 @@ router.get('/', async (req, res) => {
       {
         $addFields: {
           distributor: {
-            $let: {
-              vars: {
-                distributorDoc: { $arrayElemAt: ['$distributorInfo', 0] }
+            $cond: {
+              if: { $gt: [{ $size: '$distributorInfo' }, 0] },
+              then: {
+                $let: {
+                  vars: {
+                    distributorDoc: { $arrayElemAt: ['$distributorInfo', 0] }
+                  },
+                  in: {
+                    _id: '$$distributorDoc._id',
+                    businessName: '$$distributorDoc.businessName',
+                    logo: '$$distributorDoc.logo',
+                    email: '$$distributorDoc.email',
+                    phone: '$$distributorDoc.phone',
+                    contactPerson: '$$distributorDoc.contactPerson',
+                    name: '$$distributorDoc.name'
+                  }
+                }
               },
-              in: {
-                _id: '$$distributorDoc._id',
-                businessName: '$$distributorDoc.businessName',
-                logo: '$$distributorDoc.logo',
-                email: '$$distributorDoc.email',
-                phone: '$$distributorDoc.phone',
-                contactPerson: '$$distributorDoc.contactPerson',
-                name: '$$distributorDoc.name'
-              }
+              else: null
             }
           },
           totalCommitments: { $size: '$commitments' },
@@ -98,19 +104,25 @@ router.get('/buy', async (req, res) => {
       {
         $addFields: {
           distributor: {
-            $let: {
-              vars: {
-                distributorDoc: { $arrayElemAt: ['$distributorInfo', 0] }
+            $cond: {
+              if: { $gt: [{ $size: '$distributorInfo' }, 0] },
+              then: {
+                $let: {
+                  vars: {
+                    distributorDoc: { $arrayElemAt: ['$distributorInfo', 0] }
+                  },
+                  in: {
+                    _id: '$$distributorDoc._id',
+                    businessName: '$$distributorDoc.businessName',
+                    logo: '$$distributorDoc.logo',
+                    email: '$$distributorDoc.email',
+                    phone: '$$distributorDoc.phone',
+                    contactPerson: '$$distributorDoc.contactPerson',
+                    name: '$$distributorDoc.name'
+                  }
+                }
               },
-              in: {
-                _id: '$$distributorDoc._id',
-                businessName: '$$distributorDoc.businessName',
-                logo: '$$distributorDoc.logo',
-                email: '$$distributorDoc.email',
-                phone: '$$distributorDoc.phone',
-                contactPerson: '$$distributorDoc.contactPerson',
-                name: '$$distributorDoc.name'
-              }
+              else: null
             }
           },
           totalCommitments: { $size: '$commitments' },

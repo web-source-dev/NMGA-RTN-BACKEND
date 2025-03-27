@@ -8,10 +8,18 @@ const Log = require('../../models/Logs');
 router.get('/:distributorId', async (req, res) => {
   try {
     const { distributorId } = req.params;
-    const { minPrice, maxPrice, minQuantity, status, distributor, sortBy, sortOrder } = req.query;
+    const { minPrice, maxPrice, minQuantity, status, distributor, sortBy, sortOrder, month } = req.query;
 
     // Initialize filter with distributorId
     const filter = { distributor: distributorId };
+
+    // Month filter - default to current month if no month specified
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth(); // 0-based index
+    const monthToFilter = month ? parseInt(month) - 1 : currentMonth;
+    const startOfMonth = new Date(currentYear, monthToFilter, 1);
+    const endOfMonth = new Date(currentYear, monthToFilter + 1, 0, 23, 59, 59);
+    filter.createdAt = { $gte: startOfMonth, $lte: endOfMonth };
 
     // Price filters using discountPrice
     if (minPrice) filter.discountPrice = { $gte: Number(minPrice) };

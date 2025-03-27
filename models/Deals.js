@@ -40,6 +40,14 @@ const dealSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  bulkAction: {
+    type: Boolean,
+    default: false
+  },
+  bulkStatus: {
+    type: String,
+    enum: ['approved', 'rejected'],
+  },
   totalRevenue: {
     type: Number,
     default: 0

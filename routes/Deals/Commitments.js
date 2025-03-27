@@ -9,148 +9,152 @@ const { createNotification, notifyUsersByRole } = require('../Common/Notificatio
 const DailyCommitmentSummary = require('../../models/DailyCommitmentSummary');
 const router = express.Router();
 
-// Create a new commitment (Get Deal)
+// Create a new commitment or update existing one (Get Deal)
 router.post("/buy/:dealId", async (req, res) => {
-    try {
-      const { dealId } = req.params;
-      const { userId, quantity } = req.body;
-  
-      if (!userId || !quantity) {
-        return res.status(400).json({ 
-          error: "Missing required fields",
-          message: "Please provide all required information" 
-        });
-      }
-  
-      // Ensure the deal exists and validate quantity
-      const deal = await Deal.findById(dealId);
-      const user = await User.findById(userId);
+  try {
+    const { dealId } = req.params;
+    const { userId, quantity } = req.body;
 
-      if (!deal || !user) {
-        return res.status(404).json({ 
-          error: "Not found",
-          message: "Deal or user not found" 
-        });
-      }
+    if (!userId || !quantity) {
+      return res.status(400).json({ 
+        error: "Missing required fields",
+        message: "Please provide all required information" 
+      });
+    }
 
-      // Calculate total price using discount price
-      const totalPrice = quantity * deal.discountPrice;
+    const deal = await Deal.findById(dealId);
+    const user = await User.findById(userId);
 
-      // Get distributor information
-      const distributor = await User.findById(deal.distributor);
-      if (!distributor) {
-        return res.status(404).json({
-          error: "Not found",
-          message: "Distributor not found"
-        });
-      }
-  
-      // Create the commitment
-      const commitment = await Commitment.create({
+    if (!deal || !user) {
+      return res.status(404).json({ 
+        error: "Not found",
+        message: "Deal or user not found" 
+      });
+    }
+
+    const totalPrice = quantity * deal.discountPrice;
+    const distributor = await User.findById(deal.distributor);
+    if (!distributor) {
+      return res.status(404).json({
+        error: "Not found",
+        message: "Distributor not found"
+      });
+    }
+    
+    let commitment = await Commitment.findOne({
+      userId: userId,
+      dealId: dealId,
+      status: { $ne: "cancelled" } 
+    });
+    
+    let isNewCommitment = false;
+    
+    if (commitment) {
+      commitment.quantity = quantity; // Fix: Set quantity instead of adding to existing quantity
+      commitment.totalPrice = totalPrice;
+      commitment.status = "pending";
+      commitment.modifiedByDistributor = false;
+      commitment.modifiedQuantity = null;
+      commitment.modifiedTotalPrice = null;
+      await commitment.save();
+    } else {
+      isNewCommitment = true;
+      commitment = await Commitment.create({
         userId: userId,
         dealId: dealId,
         quantity,
         totalPrice,
         status: "pending",
       });
-  
-      // Update the deal
       deal.commitments.push(commitment._id);
       await deal.save();
-  
-      // Add success log
-      await Log.create({
-        message: `${user.name} committed to deal "${deal.name}" - Quantity: ${quantity}, Total Price: $${totalPrice} (Original: $${deal.originalCost}, Discounted: $${deal.discountPrice})`,
-        type: 'success',
-        user_id: userId
-      });
+    }
 
-      // Update or create daily commitment summary
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-      let summary = await DailyCommitmentSummary.findOne({
+    let summary = await DailyCommitmentSummary.findOne({
+      date: today,
+      userId: userId,
+      distributorId: deal.distributor
+    });
+
+    if (!summary) {
+      summary = new DailyCommitmentSummary({
         date: today,
         userId: userId,
-        distributorId: deal.distributor
-      });
-
-      if (!summary) {
-        summary = new DailyCommitmentSummary({
-          date: today,
-          userId: userId,
-          distributorId: deal.distributor,
-          commitments: [],
-          totalCommitments: 0,
-          totalQuantity: 0,
-          totalAmount: 0
-        });
-      }
-
-      // Add new commitment to summary
-      summary.commitments.push({
-        commitmentId: commitment._id,
-        dealId: dealId,
-        quantity: quantity,
-        totalPrice: totalPrice,
-        dealName: deal.name,
-        originalCost: deal.originalCost,
-        discountPrice: deal.discountPrice
-      });
-
-      // Update summary totals
-      summary.totalCommitments += 1;
-      summary.totalQuantity += quantity;
-      summary.totalAmount += totalPrice;
-      
-      await summary.save();
-  
-      // Notify distributor about new commitment
-      await createNotification({
-        recipientId: deal.distributor,
-        senderId: userId,
-        type: 'commitment',
-        subType: 'commitment_created',
-        title: 'New Deal Commitment',
-        message: `${user.name} has committed to your deal "${deal.name}" - Quantity: ${quantity}, Total: $${totalPrice}`,
-        relatedId: commitment._id,
-        onModel: 'Commitment',
-        priority: 'high'
-      });
-
-      // Notify admin about new commitment
-      await notifyUsersByRole('admin', {
-        type: 'commitment',
-        subType: 'commitment_created',
-        title: 'New Deal Commitment',
-        message: `${user.name} has committed to deal "${deal.name}" by distributor ${distributor.name}`,
-        relatedId: commitment._id,
-        onModel: 'Commitment',
-        priority: 'medium'
-      });
-
-      res.json({
-        message: "Successfully committed to the deal",
-        commitment,
-        updatedDeal: deal,
-      });
-    } catch (error) {
-      const deal = await Deal.findById(req.params.dealId);
-      const user = await User.findById(req.body.userId);
-      const dealName = deal ? deal.name : 'unknown deal';
-      const userName = user ? user.name : 'unknown user';
-
-      await Log.create({
-        message: `Failed commitment by ${userName} to "${dealName}" - Error: ${error.message}`,
-        type: 'error',
-        user_id: req.body.userId
-      });
-      console.error("Error committing to deal:", error);
-      res.status(500).json({ 
-        error: "Internal Server Error",
-        message: "An error occurred while processing your request" 
+        distributorId: deal.distributor,
+        commitments: [],
+        totalCommitments: 0,
+        totalQuantity: 0,
+        totalAmount: 0
       });
     }
+
+    // Remove previous commitment from summary if exists
+    summary.commitments = summary.commitments.filter(c => c.commitmentId.toString() !== commitment._id.toString());
+    
+    summary.commitments.push({
+      commitmentId: commitment._id,
+      dealId: dealId,
+      quantity: quantity,
+      totalPrice: totalPrice,
+      dealName: deal.name,
+      originalCost: deal.originalCost,
+      discountPrice: deal.discountPrice
+    });
+
+    // Recalculate summary totals
+    summary.totalQuantity = summary.commitments.reduce((sum, c) => sum + c.quantity, 0);
+    summary.totalAmount = summary.commitments.reduce((sum, c) => sum + c.totalPrice, 0);
+    summary.totalCommitments = summary.commitments.length;
+    
+    await summary.save();
+
+    await createNotification({
+      recipientId: deal.distributor,
+      senderId: userId,
+      type: 'commitment',
+      subType: 'commitment_created',
+      title: 'New Deal Commitment',
+      message: `${user.name} has committed to your deal "${deal.name}" - Quantity: ${quantity}, Total: $${totalPrice}`,
+      relatedId: commitment._id,
+      onModel: 'Commitment',
+      priority: 'high'
+    });
+
+    await notifyUsersByRole('admin', {
+      type: 'commitment',
+      subType: 'commitment_created',
+      title: 'New Deal Commitment',
+      message: `${user.name} has committed to deal "${deal.name}" by distributor ${distributor.name}`,
+      relatedId: commitment._id,
+      onModel: 'Commitment',
+      priority: 'medium'
+    });
+
+    res.json({
+      message: "Successfully committed to the deal",
+      commitment,
+      updatedDeal: deal,
+    });
+  } catch (error) {
+    const deal = await Deal.findById(req.params.dealId);
+    const user = await User.findById(req.body.userId);
+    const dealName = deal ? deal.name : 'unknown deal';
+    const userName = user ? user.name : 'unknown user';
+
+    await Log.create({
+      message: `Failed commitment by ${userName} to "${dealName}" - Error: ${error.message}`,
+      type: 'error',
+      user_id: req.body.userId
+    });
+    console.error("Error committing to deal:", error);
+    res.status(500).json({ 
+      error: "Internal Server Error",
+      message: "An error occurred while processing your request" 
+    });
+  }
 });
 
 // Update commitment status route
