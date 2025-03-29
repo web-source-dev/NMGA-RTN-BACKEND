@@ -27,8 +27,14 @@ const dealSchema = new mongoose.Schema({
     enum: ['active', 'inactive'],
     default: 'active'
   },
+  dealStartAt: {
+    type: Date,
+  },
   dealEndsAt: {
     type: Date,
+  },
+  singleStoreDeals: {
+    type: String,
   },
   minQtyForDiscount: {
     type: Number,

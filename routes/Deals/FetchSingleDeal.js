@@ -13,16 +13,18 @@ router.get('/deal/:dealId', async (req, res) => {
     }
 
     // Increment views counter and populate distributor info with additional fields
-    const deal = await Deal.findByIdAndUpdate(
-      dealId,
-      { $inc: { views: 1 } },
-      { new: true }
-    ).populate('distributor', 'name email businessName contactPerson phone logo');
-    
+    const deal = await Deal.findOne({
+      _id: dealId,
+      status: 'active',
+    }).populate('distributor', 'name email businessName contactPerson phone logo');
 
     if (!deal) {
-      return res.status(404).json({ message: 'Deal not found' });
+      return res.status(404).json({ message: 'Deal not found or not currently active' });
     }
+
+    // Increment the views counter
+    deal.views += 1;
+    await deal.save();
 
     // Add log entry for deal view with enhanced information
     await Log.create({
@@ -37,7 +39,11 @@ router.get('/deal/:dealId', async (req, res) => {
 
     // Get total commitments and quantity for this deal
     const commitmentStats = await Deal.aggregate([
-      { $match: { _id: new mongoose.Types.ObjectId(dealId) } },
+      { $match: { 
+          _id: new mongoose.Types.ObjectId(dealId),
+          status: 'active',
+        } 
+      },
       {
         $lookup: {
           from: 'commitments',
@@ -63,7 +69,7 @@ router.get('/deal/:dealId', async (req, res) => {
       savingsPercentage,
       totalPotentialSavings: savingsPerUnit * deal.minQtyForDiscount,
       totalCommitments: commitmentStats[0]?.totalCommitments || 0,
-      totalCommittedQuantity: commitmentStats[0]?.totalCommittedQuantity || 0
+      totalCommittedQuantity: commitmentStats[0]?.totalCommittedQuantity || 0,
     };
 
     res.status(200).json(response);

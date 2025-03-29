@@ -10,78 +10,48 @@ router.delete('/:dealId', async (req, res) => {
   try {
     const { dealId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(dealId)) {
-      await Log.create({
-        message: `Warning: Invalid deal information provided for deletion`,
-        type: 'warning',
-        user_id: req.user?.id
-      });
-      return res.status(400).json({ message: 'Invalid deal ID' });
-    }
-
-    const deal = await Deal.findById(dealId).populate('distributor', 'name _id');
+    // Find the deal
+    const deal = await Deal.findById(dealId);
     if (!deal) {
-      await Log.create({
-        message: `Warning: Attempt to delete non-existent deal`,
-        type: 'warning',
-        user_id: req.user?.id
-      });
-      return res.status(404).json({ message: 'Deal not found' });
-    }
-
-    // Find all users who have committed to or favorited this deal
-    const commitments = await mongoose.model('Commitment').find({ 
-      dealId: deal._id,
-      status: { $ne: 'cancelled' }
-    }).distinct('userId');
-
-    const favorites = await mongoose.model('Favorite').find({ 
-      dealId: deal._id 
-    }).distinct('userId');
-
-    // Combine and deduplicate user IDs
-    const affectedUsers = [...new Set([...commitments, ...favorites])];
-
-    // Notify all affected users
-    for (const userId of affectedUsers) {
-      await createNotification({
-        recipientId: userId,
-        senderId: deal.distributor._id,
-        type: 'deal',
-        subType: 'deal_deleted',
-        title: 'Deal Deleted',
-        message: `Deal "${deal.name}" has been deleted by the distributor`,
-        relatedId: deal._id,
-        onModel: 'Deal',
-        priority: 'high'
+      return res.status(404).json({
+        success: false,
+        message: 'Deal not found'
       });
     }
 
-    // Notify admin about the deletion
-    await notifyUsersByRole('admin', {
-      type: 'deal',
-      subType: 'deal_deleted',
-      title: 'Deal Deleted',
-      message: `Distributor ${deal.distributor.name} has deleted deal "${deal.name}"`,
-      relatedId: deal._id,
-      onModel: 'Deal',
-      priority: 'medium'
+    // Check for existing commitments
+    const commitments = await mongoose.model('Commitment').find({ dealId});
+    if (commitments.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete this deal as it has active commitments'
+      });
+    }
+
+    // Delete the deal
+    await Deal.findByIdAndDelete(dealId);
+
+    // Create a log entry
+    await Log.create({
+      type: 'info',
+      message: `Deal "${deal.name}" has been deleted`,
     });
 
-    // Broadcast deal deletion before actually deleting it
+    // Broadcast deal deletion
     broadcastDealUpdate({...deal.toObject(), _id: deal._id.toString()}, 'deleted');
 
-    await deal.deleteOne();
-    res.status(200).json({ message: 'Deal deleted successfully' });
-    
-    await Log.create({ 
-      message: `Deal "${deal.name}" permanently deleted by distributor`, 
-      type: 'info', 
-      user_id: deal.distributor._id 
+    // Send success response
+    res.status(200).json({
+      success: true,
+      message: `Deal "${deal.name}" has been successfully deleted`
     });
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({
+      success: false,
+      message: 'An error occurred while deleting the deal'
+    });
   }
 });
 

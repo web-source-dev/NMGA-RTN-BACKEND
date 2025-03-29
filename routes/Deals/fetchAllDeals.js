@@ -5,6 +5,7 @@ const Deal = require('../../models/Deals');
 router.get('/', async (req, res) => {
   try {
     const deals = await Deal.aggregate([
+     
       {
         $lookup: {
           from: 'users',
@@ -56,13 +57,17 @@ router.get('/', async (req, res) => {
           _id: 1,
           name: 1,
           description: 1,
+          bulkAction: 1,
+          bulkStatus: 1,
           size: 1,
           originalCost: 1,
           discountPrice: 1,
           category: 1,
           status: 1,
+          dealStartAt: 1,
           dealEndsAt: 1,
           minQtyForDiscount: 1,
+          singleStoreDeals: 1,
           images: 1,
           totalSold: 1,
           totalRevenue: 1,
@@ -82,9 +87,14 @@ router.get('/', async (req, res) => {
 
 router.get('/buy', async (req, res) => {
   try {
-    // Increment impressions for all active deals being displayed
     const deals = await Deal.aggregate([
-      { $match: { status: 'active' } },
+      { 
+        $match: { 
+          status: 'active',
+          dealStartAt: { $lte: new Date() },
+          dealEndsAt: { $gte: new Date() }
+        } 
+      },
       {
         $lookup: {
           from: 'users',
@@ -141,8 +151,10 @@ router.get('/buy', async (req, res) => {
           discountPrice: 1,
           category: 1,
           status: 1,
+          dealStartAt: 1,
           dealEndsAt: 1,
           minQtyForDiscount: 1,
+          singleStoreDeals: 1,
           images: 1,
           totalSold: 1,
           totalRevenue: 1,

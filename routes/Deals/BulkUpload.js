@@ -64,13 +64,15 @@ const defaultImages = {
 router.get('/template', (req, res) => {
     const headers = [
         { id: 'Name', title: 'Name' },
-        { id: 'Description', title: 'Description' },
+        { id: 'Description', title: 'Special Comment' },
         { id: 'Size', title: 'Size' },
         { id: 'Original Cost', title: 'Original Cost' },
         { id: 'Discount Price', title: 'Discount Price' },
         { id: 'Category', title: 'Category' },
+        { id: 'Deal Start Date (YYYY-MM-DD)', title: 'Deal Start Date (YYYY-MM-DD)' },
         { id: 'Deal End Date (YYYY-MM-DD)', title: 'Deal End Date (YYYY-MM-DD)' },
         { id: 'Min Quantity for Discount', title: 'Min Quantity for Discount' },
+        { id: 'Single Store Deals', title: 'Single Store Deals' },
         { id: 'Image URLs', title: 'Image URLs (Separate with ; or leave empty for default category images)' }
     ];
 
@@ -88,8 +90,10 @@ router.get('/template', (req, res) => {
             'Original Cost': 29.99,
             'Discount Price': 24.99,
             'Category': 'Wine',
-            'Deal End Date (YYYY-MM-DD)': '2024-12-31',
+            'Deal Start Date (YYYY-MM-DD)': '2025-05-15',
+            'Deal End Date (YYYY-MM-DD)': '2025-06-31',
             'Min Quantity for Discount': 50,
+            'Single Store Deals': 'Store A: Special offer details',
             'Image URLs': defaultImages['Wine'].join(';')
         }
     ];
@@ -183,8 +187,10 @@ const csvOptions = {
         'Original Cost',
         'Discount Price',
         'Category',
+        'Deal Start Date (YYYY-MM-DD)',
         'Deal End Date (YYYY-MM-DD)',
         'Min Quantity for Discount',
+        'Single Store Deals',
         'Image URLs'
     ],
     trim: true,
@@ -241,7 +247,9 @@ router.post('/upload/:userId', upload.single('file'), async (req, res) => {
                             originalCost: row['Original Cost'] || '',
                             discountPrice: row['Discount Price'] || '',
                             category: row['Category'] || '',
+                            dealStartAt: row['Deal Start Date (YYYY-MM-DD)'] || '',
                             dealEndsAt: row['Deal End Date (YYYY-MM-DD)'] || '',
+                            singleStoreDeals: row['Single Store Deals'] || '',
                             minQtyForDiscount: row['Min Quantity for Discount'] || '',
                             images: row['Image URLs'] || ''
                         };
@@ -261,6 +269,8 @@ router.post('/upload/:userId', upload.single('file'), async (req, res) => {
                             discountPrice: Number(normalizedRow.discountPrice.toString().trim()),
                             category: normalizedRow.category.trim(),
                             dealEndsAt: normalizedRow.dealEndsAt ? new Date(normalizedRow.dealEndsAt.toString().trim()) : null,
+                            dealStartAt: normalizedRow.dealStartAt? new Date(normalizedRow.dealStartAt.toString().trim()) : null,
+                            singleStoreDeals: normalizedRow.singleStoreDeals.trim(),
                             minQtyForDiscount: Number(normalizedRow.minQtyForDiscount.toString().trim()),
                             images: normalizedRow.images ? 
                                 normalizedRow.images.split(';')

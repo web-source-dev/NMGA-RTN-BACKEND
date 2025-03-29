@@ -18,6 +18,18 @@ const userSchema = new mongoose.Schema({
   phone: {
     type: String,
   },
+  additionalEmails: [{
+    email: {
+      type: String,
+      lowercase: true,
+      trim: true
+    },
+    label: String
+  }],
+  additionalPhoneNumbers: [{
+    number: String,
+    label: String
+  }],
   address: {
     type: String,
   },

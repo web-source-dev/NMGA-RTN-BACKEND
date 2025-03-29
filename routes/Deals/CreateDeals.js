@@ -25,11 +25,14 @@ router.post('/', async (req, res) => {
       images,
       category,
       dealEndsAt,
+      dealStartAt,
+      singleStoreDeals,
       distributor
     } = req.body;
+    console.log(req.body);
 
     // Validate required fields
-    if (!name || !originalCost || !discountPrice || !minQtyForDiscount || !distributor || !dealEndsAt) {
+    if (!name || !originalCost || !discountPrice || !minQtyForDiscount || !distributor || !dealEndsAt || !dealStartAt) {
       return res.status(400).json({
         message: 'Missing required fields'
       });
@@ -49,8 +52,16 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Validate deal end date
+    // Validate deal dates
+    const startDate = new Date(dealStartAt);
     const endDate = new Date(dealEndsAt);
+    const currentDate = new Date();
+
+    if (endDate <= startDate) {
+      return res.status(400).json({
+        message: 'Deal end date must be after start date'
+      });
+    }
     if (endDate <= new Date()) {
       return res.status(400).json({
         message: 'Deal end date must be in the future'
@@ -76,6 +87,8 @@ router.post('/', async (req, res) => {
       images: Array.isArray(images) ? images.filter(url => url && typeof url === 'string') : [],
       category,
       dealEndsAt,
+      dealStartAt,
+      singleStoreDeals: singleStoreDeals,
       distributor,
       status: 'active',
       views: 0,
