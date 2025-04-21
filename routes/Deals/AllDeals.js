@@ -3,11 +3,11 @@ const router = express.Router();
 const Deal = require('../../models/Deals');
 const Commitment = require('../../models/Commitments');
 const User = require('../../models/User');
-        // Send email notifications to all users
-        const sendEmail = require('../../utils/email');
-        const CommitmentNotificationTemplate = require('../../utils/EmailTemplates/CommitmentNotificationTemplate');
-        const { broadcastDealUpdate, broadcastSingleDealUpdate } = require('../../utils/dealUpdates');
-        
+// Send email notifications to all users
+const sendEmail = require('../../utils/email');
+const CommitmentNotificationTemplate = require('../../utils/EmailTemplates/CommitmentNotificationTemplate');
+const { broadcastDealUpdate, broadcastSingleDealUpdate } = require('../../utils/dealUpdates');
+
 // Get all deals with commitments for a distributor
 router.get('/distributor-deals', async (req, res) => {
     try {
@@ -46,7 +46,7 @@ router.get('/distributor-deals', async (req, res) => {
 
         // Date filters
         let dateQuery = {};
-        
+
         if (month) {
             const currentYear = new Date().getFullYear();
             const monthIndex = parseInt(month) - 1; // Convert to 0-based index
@@ -107,14 +107,32 @@ router.get('/distributor-deals', async (req, res) => {
             const approvedCommitments = commitments.filter(c => c.status === 'approved');
             const pendingCommitments = commitments.filter(c => c.status === 'pending');
 
+            // Calculate total quantity for each status
+            const calcTotalQuantity = (commitArray) => {
+                return commitArray.reduce((sum, c) => {
+                    // If sizeCommitments exists, sum all sizes
+                    if (c.sizeCommitments && c.sizeCommitments.length > 0) {
+                        return sum + c.sizeCommitments.reduce((sizeSum, sizeItem) => 
+                            sizeSum + sizeItem.quantity, 0);
+                    }
+                    // Fall back to regular quantity
+                    return sum + (c.quantity || 0);
+                }, 0);
+            };
+
+            const pendingTotalQuantity = calcTotalQuantity(pendingCommitments);
+            const approvedTotalQuantity = calcTotalQuantity(approvedCommitments);
+
             return {
                 _id: deal._id,
                 name: deal.name,
                 description: deal.description,
                 size: deal.size,
+                sizes: deal.sizes || [],
                 originalCost: deal.originalCost,
                 discountPrice: deal.discountPrice,
                 minimumQuantity: deal.minQtyForDiscount,
+                discountTiers: deal.discountTiers || [],
                 category: deal.category,
                 status: deal.status,
                 dealEndsAt: deal.dealEndsAt,
@@ -125,13 +143,13 @@ router.get('/distributor-deals', async (req, res) => {
                 pendingCommitments: commitments.filter(c => c.status === 'pending').length,
                 approvedCommitments: commitments.filter(c => c.status === 'approved').length,
                 declinedCommitments: commitments.filter(c => c.status === 'declined').length,
-               
-                totalPQuantity: pendingCommitments.reduce((sum, c) => sum + c.quantity, 0),
+
+                totalPQuantity: pendingTotalQuantity,
                 totalPAmount: pendingCommitments.reduce((sum, c) => sum + c.totalPrice, 0),
-                totalQuantity: approvedCommitments.reduce((sum, c) => sum + c.quantity, 0),
+                totalQuantity: approvedTotalQuantity,
                 totalAmount: approvedCommitments.reduce((sum, c) => sum + c.totalPrice, 0)
             };
-        }) .filter(deal => deal !== null); // Remove null values
+        }).filter(deal => deal !== null); // Remove null values
 
         res.json({
             success: true,
@@ -189,7 +207,7 @@ router.get('/admin-all-deals', async (req, res) => {
 
         // Date filters
         let dateQuery = {};
-        
+
         if (month) {
             const currentYear = new Date().getFullYear();
             const monthIndex = parseInt(month) - 1; // Convert to 0-based index
@@ -254,14 +272,32 @@ router.get('/admin-all-deals', async (req, res) => {
             const approvedCommitments = commitments.filter(c => c.status === 'approved');
             const pendingCommitments = commitments.filter(c => c.status === 'pending');
 
+            // Calculate total quantity for each status
+            const calcTotalQuantity = (commitArray) => {
+                return commitArray.reduce((sum, c) => {
+                    // If sizeCommitments exists, sum all sizes
+                    if (c.sizeCommitments && c.sizeCommitments.length > 0) {
+                        return sum + c.sizeCommitments.reduce((sizeSum, sizeItem) => 
+                            sizeSum + sizeItem.quantity, 0);
+                    }
+                    // Fall back to regular quantity
+                    return sum + (c.quantity || 0);
+                }, 0);
+            };
+
+            const pendingTotalQuantity = calcTotalQuantity(pendingCommitments);
+            const approvedTotalQuantity = calcTotalQuantity(approvedCommitments);
+
             return {
                 _id: deal._id,
                 name: deal.name,
                 description: deal.description,
                 size: deal.size,
+                sizes: deal.sizes || [],
                 originalCost: deal.originalCost,
                 discountPrice: deal.discountPrice,
                 minimumQuantity: deal.minQtyForDiscount,
+                discountTiers: deal.discountTiers || [],
                 category: deal.category,
                 status: deal.status,
                 distributor: deal.distributor,
@@ -273,12 +309,13 @@ router.get('/admin-all-deals', async (req, res) => {
                 pendingCommitments: commitments.filter(c => c.status === 'pending').length,
                 approvedCommitments: commitments.filter(c => c.status === 'approved').length,
                 declinedCommitments: commitments.filter(c => c.status === 'declined').length,
-                totalPQuantity: pendingCommitments.reduce((sum, c) => sum + c.quantity, 0),
+                
+                totalPQuantity: pendingTotalQuantity,
                 totalPAmount: pendingCommitments.reduce((sum, c) => sum + c.totalPrice, 0),
-                totalQuantity: approvedCommitments.reduce((sum, c) => sum + c.quantity, 0),
+                totalQuantity: approvedTotalQuantity,
                 totalAmount: approvedCommitments.reduce((sum, c) => sum + c.totalPrice, 0)
             };
-        }).filter(deal => deal!== null); // Remove null values
+        }).filter(deal => deal !== null); // Remove null values
 
         res.json({
             success: true,
@@ -308,14 +345,14 @@ router.post('/bulk-approve-commitments', async (req, res) => {
         }
 
         // Find all pending commitments for this deal
-        const pendingCommitments = await Commitment.find({ 
+        const pendingCommitments = await Commitment.find({
             dealId: dealId,
             status: 'pending'
         }).populate('userId', 'name email businessName');
 
         // Update all pending commitments to approved
         const result = await Commitment.updateMany(
-            { 
+            {
                 dealId: dealId,
                 status: 'pending'
             },
@@ -331,15 +368,16 @@ router.post('/bulk-approve-commitments', async (req, res) => {
         for (const commitment of pendingCommitments) {
             const userName = commitment.userId.businessName || commitment.userId.name;
             const userEmail = commitment.userId.email;
-            
+
             const emailHtml = CommitmentNotificationTemplate.statusUpdate(
                 userName,
                 deal.name,
                 'approved',
-                commitment.quantity,
-                commitment.totalPrice
+                commitment.quantity || 0,
+                commitment.totalPrice,
+                commitment.sizeCommitments
             );
-            
+
             try {
                 await sendEmail(userEmail, `Your Commitment for ${deal.name} has been Approved`, emailHtml);
             } catch (emailError) {
@@ -350,7 +388,18 @@ router.post('/bulk-approve-commitments', async (req, res) => {
 
         // Update the deal's total sold and revenue
         const commitments = await Commitment.find({ dealId: dealId, status: 'approved' });
-        const totalSold = commitments.reduce((sum, c) => sum + c.quantity, 0);
+        
+        // Calculate totalSold properly accounting for sizeCommitments
+        const totalSold = commitments.reduce((sum, c) => {
+            // If sizeCommitments exists and has items, sum all sizes
+            if (c.sizeCommitments && c.sizeCommitments.length > 0) {
+                return sum + c.sizeCommitments.reduce((sizeSum, sizeItem) => 
+                    sizeSum + sizeItem.quantity, 0);
+            }
+            // Otherwise, use the regular quantity field (or 0 if it doesn't exist)
+            return sum + (c.quantity || 0);
+        }, 0);
+        
         const totalRevenue = commitments.reduce((sum, c) => sum + c.totalPrice, 0);
 
         const updatedDeal = await Deal.findByIdAndUpdate(dealId, {
@@ -367,8 +416,8 @@ router.post('/bulk-approve-commitments', async (req, res) => {
             broadcastSingleDealUpdate(dealId, updatedDeal);
         }
 
-        res.json({ 
-            success: true, 
+        res.json({
+            success: true,
             message: 'All pending commitments have been approved',
             modifiedCount: result.modifiedCount
         });
@@ -390,14 +439,14 @@ router.post('/bulk-decline-commitments', async (req, res) => {
         }
 
         // Find all pending commitments for this deal
-        const pendingCommitments = await Commitment.find({ 
+        const pendingCommitments = await Commitment.find({
             dealId: dealId,
             status: 'pending'
         }).populate('userId', 'name email businessName');
 
         // Update all pending commitments to declined
         const result = await Commitment.updateMany(
-            { 
+            {
                 dealId: dealId,
                 status: 'pending'
             },
@@ -412,19 +461,20 @@ router.post('/bulk-decline-commitments', async (req, res) => {
         // Send email notifications to all users
         const sendEmail = require('../../utils/email');
         const CommitmentNotificationTemplate = require('../../utils/EmailTemplates/CommitmentNotificationTemplate');
-        
+
         for (const commitment of pendingCommitments) {
             const userName = commitment.userId.businessName || commitment.userId.name;
             const userEmail = commitment.userId.email;
-            
+
             const emailHtml = CommitmentNotificationTemplate.statusUpdate(
                 userName,
                 deal.name,
                 'declined',
-                commitment.quantity,
-                commitment.totalPrice
+                commitment.quantity || 0,
+                commitment.totalPrice,
+                commitment.sizeCommitments
             );
-            
+
             try {
                 await sendEmail(userEmail, `Your Commitment for ${deal.name} has been Declined`, emailHtml);
             } catch (emailError) {
@@ -445,8 +495,8 @@ router.post('/bulk-decline-commitments', async (req, res) => {
             broadcastSingleDealUpdate(dealId, updatedDeal);
         }
 
-        res.json({ 
-            success: true, 
+        res.json({
+            success: true,
             message: 'All pending commitments have been declined',
             modifiedCount: result.modifiedCount
         });
@@ -497,18 +547,18 @@ router.post('/update-commitment-status', async (req, res) => {
         const commitment = await Commitment.findById(commitmentId)
             .populate('dealId')
             .populate('userId', 'name email businessName');
-        
+
         if (!commitment) {
             return res.status(404).json({ success: false, message: 'Commitment not found' });
         }
 
         // If it's not an admin action, verify the deal belongs to the distributor
         if (!adminAction) {
-            const deal = await Deal.findOne({ 
-                _id: commitment.dealId._id, 
-                distributor: distributorId 
+            const deal = await Deal.findOne({
+                _id: commitment.dealId._id,
+                distributor: distributorId
             });
-            
+
             if (!deal) {
                 return res.status(403).json({ success: false, message: 'Unauthorized access' });
             }
@@ -523,15 +573,16 @@ router.post('/update-commitment-status', async (req, res) => {
         const userName = commitment.userId.businessName || commitment.userId.name;
         const userEmail = commitment.userId.email;
         const dealName = commitment.dealId.name;
-        
+
         const emailHtml = CommitmentNotificationTemplate.statusUpdate(
             userName,
             dealName,
             status,
-            commitment.quantity,
-            commitment.totalPrice
+            commitment.quantity || 0,
+            commitment.totalPrice,
+            commitment.sizeCommitments
         );
-        
+
         try {
             await sendEmail(userEmail, `Your Commitment for ${dealName} has been ${status.charAt(0).toUpperCase() + status.slice(1)}`, emailHtml);
         } catch (emailError) {
@@ -541,22 +592,32 @@ router.post('/update-commitment-status', async (req, res) => {
 
         // If status is approved, update deal totals
         if (status === 'approved') {
-            const approvedCommitments = await Commitment.find({ 
-                dealId: commitment.dealId._id, 
-                status: 'approved' 
+            const approvedCommitments = await Commitment.find({
+                dealId: commitment.dealId._id,
+                status: 'approved'
             });
+
+            // Calculate totalSold properly accounting for sizeCommitments
+            const totalSold = approvedCommitments.reduce((sum, c) => {
+                // If sizeCommitments exists and has items, sum all sizes
+                if (c.sizeCommitments && c.sizeCommitments.length > 0) {
+                    return sum + c.sizeCommitments.reduce((sizeSum, sizeItem) => 
+                        sizeSum + sizeItem.quantity, 0);
+                }
+                // Otherwise, use the regular quantity field (or 0 if it doesn't exist)
+                return sum + (c.quantity || 0);
+            }, 0);
             
-            const totalSold = approvedCommitments.reduce((sum, c) => sum + c.quantity, 0);
             const totalRevenue = approvedCommitments.reduce((sum, c) => sum + c.totalPrice, 0);
-            
+
             await Deal.findByIdAndUpdate(commitment.dealId._id, {
                 totalSold,
                 totalRevenue
             });
         }
 
-        res.json({ 
-            success: true, 
+        res.json({
+            success: true,
             message: `Commitment status updated to ${status}`,
             commitment
         });

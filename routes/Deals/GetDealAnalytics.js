@@ -5,6 +5,16 @@ const Commitment = require('../../models/Commitments');
 const User = require('../../models/User');
 const mongoose = require('mongoose');
 
+// Helper function to calculate total quantity for a commitment
+const calculateTotalQuantity = (commitment) => {
+    // If sizeCommitments exists and has items, sum all sizes
+    if (commitment.sizeCommitments && commitment.sizeCommitments.length > 0) {
+        return commitment.sizeCommitments.reduce((sum, item) => sum + item.quantity, 0);
+    }
+    // Otherwise, use the regular quantity field (or 0 if it doesn't exist)
+    return commitment.quantity || 0;
+};
+
 // Get analytics for a specific deal
 router.get('/:dealId', async (req, res) => {
     try {
@@ -33,9 +43,9 @@ router.get('/:dealId', async (req, res) => {
             .populate('userId', 'businessName name')
             .sort({ createdAt: -1 });
 
-        // Calculate analytics data
+        // Calculate analytics data using the helper function for quantities
         const totalCommitments = commitments.length;
-        const totalQuantity = commitments.reduce((sum, c) => sum + c.quantity, 0);
+        const totalQuantity = commitments.reduce((sum, c) => sum + calculateTotalQuantity(c), 0);
         const totalRevenue = commitments.reduce((sum, c) => sum + c.totalPrice, 0);
 
         // Status breakdown
@@ -55,11 +65,30 @@ router.get('/:dealId', async (req, res) => {
             return date.toISOString().split('T')[0];
         }).reverse();
 
+        // Modified aggregation to handle size-based commitments
         const hourlyData = await Commitment.aggregate([
             {
                 $match: {
                     dealId: new mongoose.Types.ObjectId(dealId),
                     createdAt: { $gte: sevenDaysAgo }
+                }
+            },
+            {
+                $addFields: {
+                    // Calculate quantity from sizeCommitments or use regular quantity
+                    calculatedQuantity: {
+                        $cond: {
+                            if: { $isArray: "$sizeCommitments" },
+                            then: {
+                                $reduce: {
+                                    input: "$sizeCommitments",
+                                    initialValue: 0,
+                                    in: { $add: ["$$value", "$$this.quantity"] }
+                                }
+                            },
+                            else: { $ifNull: ["$quantity", 0] }
+                        }
+                    }
                 }
             },
             {
@@ -69,7 +98,7 @@ router.get('/:dealId', async (req, res) => {
                         hour: { $hour: "$createdAt" }
                     },
                     count: { $sum: 1 },
-                    totalQuantity: { $sum: "$quantity" },
+                    totalQuantity: { $sum: "$calculatedQuantity" },
                     totalValue: { $sum: "$totalPrice" },
                     uniqueMembers: { $addToSet: "$userId" }
                 }
@@ -94,7 +123,7 @@ router.get('/:dealId', async (req, res) => {
             })
         }));
 
-        // Daily performance metrics
+        // Daily performance metrics with handling for size-based commitments
         const dailyMetrics = await Commitment.aggregate([
             {
                 $match: {
@@ -103,10 +132,28 @@ router.get('/:dealId', async (req, res) => {
                 }
             },
             {
+                $addFields: {
+                    // Calculate quantity from sizeCommitments or use regular quantity
+                    calculatedQuantity: {
+                        $cond: {
+                            if: { $isArray: "$sizeCommitments" },
+                            then: {
+                                $reduce: {
+                                    input: "$sizeCommitments",
+                                    initialValue: 0,
+                                    in: { $add: ["$$value", "$$this.quantity"] }
+                                }
+                            },
+                            else: { $ifNull: ["$quantity", 0] }
+                        }
+                    }
+                }
+            },
+            {
                 $group: {
                     _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
                     totalOrders: { $sum: 1 },
-                    totalQuantity: { $sum: "$quantity" },
+                    totalQuantity: { $sum: "$calculatedQuantity" },
                     totalRevenue: { $sum: "$totalPrice" },
                     avgOrderValue: { $avg: "$totalPrice" },
                     maxOrderValue: { $max: "$totalPrice" },
@@ -117,24 +164,60 @@ router.get('/:dealId', async (req, res) => {
             { $sort: { _id: 1 } }
         ]);
 
-        // Member analysis
+        // Member analysis with size data
         const memberAnalysis = await Commitment.aggregate([
             { $match: { dealId: new mongoose.Types.ObjectId(dealId) } },
+            {
+                $addFields: {
+                    // Calculate quantity from sizeCommitments or use regular quantity
+                    calculatedQuantity: {
+                        $cond: {
+                            if: { $isArray: "$sizeCommitments" },
+                            then: {
+                                $reduce: {
+                                    input: "$sizeCommitments",
+                                    initialValue: 0,
+                                    in: { $add: ["$$value", "$$this.quantity"] }
+                                }
+                            },
+                            else: { $ifNull: ["$quantity", 0] }
+                        }
+                    },
+                    // Extract size breakdown for analytics
+                    sizeBreakdownObj: {
+                        $cond: {
+                            if: { $isArray: "$sizeCommitments" },
+                            then: {
+                                $arrayToObject: {
+                                    $map: {
+                                        input: "$sizeCommitments",
+                                        as: "size",
+                                        in: { k: "$$size.size", v: "$$size.quantity" }
+                                    }
+                                }
+                            },
+                            else: {}
+                        }
+                    }
+                }
+            },
             {
                 $group: {
                     _id: "$userId",
                     totalCommitments: { $sum: 1 },
-                    totalQuantity: { $sum: "$quantity" },
+                    totalQuantity: { $sum: "$calculatedQuantity" },
                     totalValue: { $sum: "$totalPrice" },
                     avgOrderValue: { $avg: "$totalPrice" },
-                    avgQuantityPerOrder: { $avg: "$quantity" },
-                    maxQuantity: { $max: "$quantity" },
-                    minQuantity: { $min: "$quantity" },
+                    avgQuantityPerOrder: { $avg: "$calculatedQuantity" },
+                    maxQuantity: { $max: "$calculatedQuantity" },
+                    minQuantity: { $min: "$calculatedQuantity" },
                     lastOrderDate: { $max: "$createdAt" },
                     firstOrderDate: { $min: "$createdAt" },
                     orderDates: { $push: "$createdAt" },
-                    quantities: { $push: "$quantity" },
-                    values: { $push: "$totalPrice" }
+                    quantities: { $push: "$calculatedQuantity" },
+                    values: { $push: "$totalPrice" },
+                    // Merge size breakdowns from all orders
+                    sizeBreakdowns: { $push: "$sizeBreakdownObj" }
                 }
             },
             { $sort: { totalQuantity: -1 } }
@@ -145,12 +228,42 @@ router.get('/:dealId', async (req, res) => {
             select: "businessName name"
         });
 
-        // Quantity segments
+        // Process size breakdowns for each member
+        populatedMembers.forEach(member => {
+            // Combine size breakdowns from all orders
+            member.sizeBreakdown = member.sizeBreakdowns.reduce((acc, orderSizes) => {
+                Object.entries(orderSizes).forEach(([size, quantity]) => {
+                    acc[size] = (acc[size] || 0) + quantity;
+                });
+                return acc;
+            }, {});
+            
+            delete member.sizeBreakdowns; // Remove the intermediate data
+        });
+
+        // Quantity segments using calculatedQuantity
         const quantitySegments = await Commitment.aggregate([
             { $match: { dealId: new mongoose.Types.ObjectId(dealId) } },
             {
+                $addFields: {
+                    calculatedQuantity: {
+                        $cond: {
+                            if: { $isArray: "$sizeCommitments" },
+                            then: {
+                                $reduce: {
+                                    input: "$sizeCommitments",
+                                    initialValue: 0,
+                                    in: { $add: ["$$value", "$$this.quantity"] }
+                                }
+                            },
+                            else: { $ifNull: ["$quantity", 0] }
+                        }
+                    }
+                }
+            },
+            {
                 $bucket: {
-                    groupBy: "$quantity",
+                    groupBy: "$calculatedQuantity",
                     boundaries: [0, 50, 100, 500, 1000, Infinity],
                     default: "1000+",
                     output: {
@@ -158,7 +271,7 @@ router.get('/:dealId', async (req, res) => {
                         totalValue: { $sum: "$totalPrice" },
                         avgValue: { $avg: "$totalPrice" },
                         members: { $addToSet: "$userId" },
-                        totalQuantity: { $sum: "$quantity" }
+                        totalQuantity: { $sum: "$calculatedQuantity" }
                     }
                 }
             }
@@ -166,13 +279,13 @@ router.get('/:dealId', async (req, res) => {
 
         // Performance metrics
         const performanceMetrics = {
-            peakHourOrders: Math.max(...hourlyData.map(h => h.count)),
-            peakDayOrders: Math.max(...dailyMetrics.map(d => d.totalOrders)),
-            averageDailyOrders: dailyMetrics.reduce((sum, d) => sum + d.totalOrders, 0) / dailyMetrics.length || 0,
+            peakHourOrders: Math.max(...hourlyData.map(h => h.count || 0), 0),
+            peakDayOrders: Math.max(...dailyMetrics.map(d => d.totalOrders || 0), 0),
+            averageDailyOrders: dailyMetrics.length ? dailyMetrics.reduce((sum, d) => sum + (d.totalOrders || 0), 0) / dailyMetrics.length : 0,
             totalUniqueMembers: new Set(commitments.map(c => c.userId.toString())).size,
-            repeatOrderRate: (commitments.length - new Set(commitments.map(c => c.userId.toString())).size) / commitments.length * 100,
+            repeatOrderRate: commitments.length ? (commitments.length - new Set(commitments.map(c => c.userId.toString())).size) / commitments.length * 100 : 0,
             avgTimeToNextOrder: calculateAvgTimeBetweenOrders(commitments),
-            orderCompletionRate: (commitments.filter(c => c.status === 'approved').length / commitments.length) * 100
+            orderCompletionRate: commitments.length ? (commitments.filter(c => c.status === 'approved').length / commitments.length) * 100 : 0
         };
 
         // Format response
@@ -183,6 +296,8 @@ router.get('/:dealId', async (req, res) => {
                 distributor: deal.distributor.businessName || deal.distributor.name,
                 originalCost: deal.originalCost,
                 discountPrice: deal.discountPrice,
+                sizes: deal.sizes || [],
+                discountTiers: deal.discountTiers || [],
                 minQtyForDiscount: deal.minQtyForDiscount,
                 views: deal.views || 0,
                 impressions: deal.impressions || 0,
@@ -253,37 +368,49 @@ router.get('/:dealId', async (req, res) => {
         res.json(analyticsData);
     } catch (error) {
         console.error('Error fetching deal analytics:', error);
-        res.status(500).json({ message: 'Error fetching deal analytics' });
+        res.status(500).json({ message: 'Error fetching analytics data', error: error.message });
     }
 });
 
+// Calculate average time between orders for repeat customers
 function calculateAvgTimeBetweenOrders(commitments) {
-    if (commitments.length < 2) return 0;
-    
-    const sortedCommitments = commitments.sort((a, b) => a.createdAt - b.createdAt);
-    let totalTime = 0;
+    // Group commitments by user
+    const userCommitments = commitments.reduce((acc, commitment) => {
+        const userId = commitment.userId.toString();
+        if (!acc[userId]) {
+            acc[userId] = [];
+        }
+        acc[userId].push(new Date(commitment.createdAt));
+        return acc;
+    }, {});
+
+    // Calculate time differences for users with multiple orders
+    let totalDifference = 0;
     let count = 0;
-    
-    for (let i = 1; i < sortedCommitments.length; i++) {
-        const timeDiff = sortedCommitments[i].createdAt - sortedCommitments[i-1].createdAt;
-        totalTime += timeDiff;
-        count++;
-    }
-    
-    return count > 0 ? totalTime / count / (1000 * 60 * 60) : 0; // Convert to hours
+
+    Object.values(userCommitments).forEach(dates => {
+        if (dates.length > 1) {
+            // Sort dates in ascending order
+            dates.sort((a, b) => a - b);
+            
+            // Calculate time difference between orders
+            for (let i = 1; i < dates.length; i++) {
+                const difference = dates[i] - dates[i-1];
+                totalDifference += difference;
+                count++;
+            }
+        }
+    });
+
+    // Return average time difference in hours or 0 if no repeat orders
+    return count > 0 ? totalDifference / count / (1000 * 60 * 60) : 0;
 }
 
+// Calculate deal progress (total sold / minimumQuantity)
 function calculateDealProgress(deal) {
-    if (!deal.dealEndsAt) return 100;
-    
-    const now = new Date();
-    const endDate = new Date(deal.dealEndsAt);
-    const startDate = new Date(deal.createdAt);
-    
-    const totalDuration = endDate - startDate;
-    const elapsed = now - startDate;
-    
-    return Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+    const minQty = deal.minQtyForDiscount || 1;
+    const totalSold = deal.totalSold || 0;
+    return Math.min(100, (totalSold / minQty) * 100);
 }
 
 module.exports = router;

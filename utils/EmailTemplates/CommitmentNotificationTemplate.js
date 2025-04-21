@@ -2,72 +2,138 @@ const baseTemplate = require('./baseTemplate');
 const { FRONTEND_URL } = process.env;
 
 const CommitmentNotificationTemplate = {
-  user: (userName, dealName, quantity, totalPrice) => baseTemplate(`
-    <h2>Commitment Confirmation</h2>
-    <p>Dear ${userName},</p>
-    <p>Your commitment to the deal <strong>${dealName}</strong> has been successfully recorded.</p>
+  user: (userName, dealName, quantity, totalPrice, sizeCommitments = null) => {
+    let quantityHtml = '';
     
-    <h3>Commitment Details:</h3>
-    <ul>
-      <li>Deal: ${dealName}</li>
-      <li>Quantity: ${quantity}</li>
-      <li>Total Price: $${totalPrice.toLocaleString()}</li>
-      <li>Status: Pending</li>
-    </ul>
+    if (sizeCommitments && sizeCommitments.length > 0) {
+      // For size-based commitments
+      quantityHtml = `
+        <li>
+          <strong>Size Details:</strong>
+          <ul>
+            ${sizeCommitments.map(item => `
+              <li>${item.size}: ${item.quantity} × $${item.pricePerUnit.toFixed(2)} = $${item.totalPrice.toFixed(2)}</li>
+            `).join('')}
+          </ul>
+        </li>
+        <li>Total Quantity: ${sizeCommitments.reduce((sum, item) => sum + item.quantity, 0)}</li>
+      `;
+    } else {
+      // For regular commitments
+      quantityHtml = `<li>Quantity: ${quantity}</li>`;
+    }
+    
+    return baseTemplate(`
+      <h2>Commitment Confirmation</h2>
+      <p>Dear ${userName},</p>
+      <p>Your commitment to the deal <strong>${dealName}</strong> has been successfully recorded.</p>
+      
+      <h3>Commitment Details:</h3>
+      <ul>
+        <li>Deal: ${dealName}</li>
+        ${quantityHtml}
+        <li>Total Price: $${totalPrice.toLocaleString()}</li>
+        <li>Status: Pending</li>
+      </ul>
 
-    <p>What happens next?</p>
-    <ul>
-      <li>The distributor will review your commitment</li>
-      <li>You'll receive an email when the status changes</li>
-      <li>You can track your commitment status in your dashboard</li>
-    </ul>
+      <p>What happens next?</p>
+      <ul>
+        <li>The distributor will review your commitment</li>
+        <li>You'll receive an email when the status changes</li>
+        <li>You can track your commitment status in your dashboard</li>
+      </ul>
 
-    <a href="${FRONTEND_URL}/dashboard" class="button">View Your Commitments</a>
-  `),
+      <a href="${FRONTEND_URL}/dashboard" class="button">View Your Commitments</a>
+    `);
+  },
 
-  distributor: (userName, dealName, quantity, totalPrice) => baseTemplate(`
-    <h2>New Commitment Received</h2>
-    <p>Hello,</p>
-    <p>You have received a new commitment for your deal <strong>${dealName}</strong>.</p>
+  distributor: (userName, dealName, quantity, totalPrice, sizeCommitments = null) => {
+    let quantityHtml = '';
+    
+    if (sizeCommitments && sizeCommitments.length > 0) {
+      // For size-based commitments
+      quantityHtml = `
+        <li>
+          <strong>Size Details:</strong>
+          <ul>
+            ${sizeCommitments.map(item => `
+              <li>${item.size}: ${item.quantity} × $${item.pricePerUnit.toFixed(2)} = $${item.totalPrice.toFixed(2)}</li>
+            `).join('')}
+          </ul>
+        </li>
+        <li>Total Quantity: ${sizeCommitments.reduce((sum, item) => sum + item.quantity, 0)}</li>
+      `;
+    } else {
+      // For regular commitments
+      quantityHtml = `<li>Quantity: ${quantity}</li>`;
+    }
+    
+    return baseTemplate(`
+      <h2>New Commitment Received</h2>
+      <p>Hello,</p>
+      <p>You have received a new commitment for your deal <strong>${dealName}</strong>.</p>
 
-    <h3>Commitment Details:</h3>
-    <ul>
-      <li>Member: ${userName}</li>
-      <li>Deal: ${dealName}</li>
-      <li>Quantity: ${quantity}</li>
-      <li>Total Price: $${totalPrice.toLocaleString()}</li>
-      <li>Status: Pending Review</li>
-    </ul>
+      <h3>Commitment Details:</h3>
+      <ul>
+        <li>Member: ${userName}</li>
+        <li>Deal: ${dealName}</li>
+        ${quantityHtml}
+        <li>Total Price: $${totalPrice.toLocaleString()}</li>
+        <li>Status: Pending Review</li>
+      </ul>
 
-    <p>Required Actions:</p>
-    <ul>
-      <li>Review the commitment details</li>
-      <li>Approve or modify the commitment</li>
-      <li>Provide any necessary feedback</li>
-    </ul>
+      <p>Required Actions:</p>
+      <ul>
+        <li>Review the commitment details</li>
+        <li>Approve or modify the commitment</li>
+        <li>Provide any necessary feedback</li>
+      </ul>
 
-    <a href="${FRONTEND_URL}/dashboard" class="button">Review Commitment</a>
-  `),
+      <a href="${FRONTEND_URL}/dashboard" class="button">Review Commitment</a>
+    `);
+  },
   
-  statusUpdate: (userName, dealName, status, quantity, totalPrice) => baseTemplate(`
-    <h2>Commitment Status Update</h2>
-    <p>Dear ${userName},</p>
-    <p>The status of your commitment for the deal <strong>${dealName}</strong> has been updated.</p>
+  statusUpdate: (userName, dealName, status, quantity, totalPrice, sizeCommitments = null) => {
+    let quantityHtml = '';
     
-    <h3>Commitment Details:</h3>
-    <ul>
-      <li>Deal: ${dealName}</li>
-      <li>Quantity: ${quantity}</li>
-      <li>Total Price: $${totalPrice.toLocaleString()}</li>
-      <li>Status: <strong>${status.charAt(0).toUpperCase() + status.slice(1)}</strong></li>
-    </ul>
+    if (sizeCommitments && sizeCommitments.length > 0) {
+      // For size-based commitments
+      quantityHtml = `
+        <li>
+          <strong>Size Details:</strong>
+          <ul>
+            ${sizeCommitments.map(item => `
+              <li>${item.size}: ${item.quantity} × $${item.pricePerUnit.toFixed(2)} = $${item.totalPrice.toFixed(2)}</li>
+            `).join('')}
+          </ul>
+        </li>
+        <li>Total Quantity: ${sizeCommitments.reduce((sum, item) => sum + item.quantity, 0)}</li>
+      `;
+    } else {
+      // For regular commitments
+      quantityHtml = `<li>Quantity: ${quantity}</li>`;
+    }
+    
+    return baseTemplate(`
+      <h2>Commitment Status Update</h2>
+      <p>Dear ${userName},</p>
+      <p>The status of your commitment for the deal <strong>${dealName}</strong> has been updated.</p>
+      
+      <h3>Commitment Details:</h3>
+      <ul>
+        <li>Deal: ${dealName}</li>
+        ${quantityHtml}
+        <li>Total Price: $${totalPrice.toLocaleString()}</li>
+        <li>Status: <strong>${status.charAt(0).toUpperCase() + status.slice(1)}</strong></li>
+      </ul>
 
-    <p>${status === 'approved' 
-      ? 'Your commitment has been approved by the distributor. You will be contacted with further instructions regarding payment and delivery.' 
-      : 'Unfortunately, your commitment has been declined by the distributor. Please check your dashboard for more information or contact the distributor directly if you have any questions.'}</p>
+      <p>${status === 'approved' 
+        ? 'Your commitment has been approved by the distributor. You will be contacted with further instructions regarding payment and delivery.' 
+        : 'Unfortunately, your commitment has been declined by the distributor. Please check your dashboard for more information or contact the distributor directly if you have any questions.'}</p>
 
-    <a href="${FRONTEND_URL}/dashboard" class="button">View Your Commitments</a>
-  `)
+      <a href="${FRONTEND_URL}/dashboard" class="button">View Your Commitments</a>
+    `);
+  }
 };
 
 module.exports = CommitmentNotificationTemplate; 

@@ -13,13 +13,23 @@ const router = express.Router();
 router.post("/buy/:dealId", async (req, res) => {
   try {
     const { dealId } = req.params;
-    const { userId, quantity } = req.body;
+    const { userId, sizeCommitments } = req.body;
 
-    if (!userId || !quantity) {
+    if (!userId || !sizeCommitments || !Array.isArray(sizeCommitments) || sizeCommitments.length === 0) {
       return res.status(400).json({ 
         error: "Missing required fields",
-        message: "Please provide all required information" 
+        message: "Please provide userId and sizeCommitments array" 
       });
+    }
+    
+    // Validate each size commitment
+    for (const sizeCommit of sizeCommitments) {
+      if (!sizeCommit.size || !sizeCommit.quantity || sizeCommit.quantity <= 0) {
+        return res.status(400).json({
+          error: "Invalid size commitment",
+          message: "Each size must include size name and quantity greater than 0"
+        });
+      }
     }
 
     const deal = await Deal.findById(dealId);
@@ -32,7 +42,86 @@ router.post("/buy/:dealId", async (req, res) => {
       });
     }
 
-    const totalPrice = quantity * deal.discountPrice;
+    // Validate that each size in the commitment exists in the deal
+    for (const sizeCommit of sizeCommitments) {
+      const matchingSize = deal.sizes.find(s => s.size === sizeCommit.size);
+      if (!matchingSize) {
+        return res.status(400).json({
+          error: "Invalid size",
+          message: `Size "${sizeCommit.size}" does not exist in this deal`
+        });
+      }
+    }
+
+    // Calculate total quantity and price across all sizes
+    let totalQuantity = 0;
+    let totalPrice = 0;
+    
+    const processedSizeCommitments = sizeCommitments.map(sizeCommit => {
+      const matchingSize = deal.sizes.find(s => s.size === sizeCommit.size);
+      const quantityForSize = Number(sizeCommit.quantity);
+      const pricePerUnit = Number(matchingSize.discountPrice);
+      const totalPriceForSize = quantityForSize * pricePerUnit;
+      
+      totalQuantity += quantityForSize;
+      totalPrice += totalPriceForSize;
+      
+      return {
+        size: sizeCommit.size,
+        quantity: quantityForSize,
+        pricePerUnit: pricePerUnit,
+        totalPrice: totalPriceForSize
+      };
+    });
+
+    // Find if discount tier applies based on total quantity of all commitments for this deal
+    let appliedDiscountTier = null;
+    
+    if (deal.discountTiers && deal.discountTiers.length > 0) {
+      // Get total quantity committed to this deal (including existing commitments)
+      const existingCommitments = await Commitment.find({
+        dealId: dealId,
+        status: { $ne: "cancelled" }
+      });
+      
+      const existingTotalQuantity = existingCommitments.reduce((sum, commitment) => {
+        // Add up quantities from sizeCommitments in each commitment
+        if (commitment.sizeCommitments && Array.isArray(commitment.sizeCommitments)) {
+          return sum + commitment.sizeCommitments.reduce((sizeSum, sc) => sizeSum + sc.quantity, 0);
+        }
+        return sum;
+      }, 0);
+      
+      // Find the highest tier that would be reached with this new commitment
+      const projectedTotalQuantity = existingTotalQuantity + totalQuantity;
+      
+      // Sort tiers by quantity in descending order to find the highest applicable tier
+      const sortedTiers = [...deal.discountTiers].sort((a, b) => b.tierQuantity - a.tierQuantity);
+      
+      // Find highest applicable tier
+      for (const tier of sortedTiers) {
+        if (projectedTotalQuantity >= tier.tierQuantity) {
+          appliedDiscountTier = tier;
+          break;
+        }
+      }
+      
+      // Apply discount if a tier is applicable
+      if (appliedDiscountTier) {
+        const discountRate = appliedDiscountTier.tierDiscount / 100;
+        
+        // Recalculate prices with the discount
+        totalPrice = 0;
+        processedSizeCommitments.forEach(sizeCommit => {
+          const originalTotal = sizeCommit.pricePerUnit * sizeCommit.quantity;
+          const discountedPrice = sizeCommit.pricePerUnit * (1 - discountRate);
+          sizeCommit.pricePerUnit = discountedPrice;
+          sizeCommit.totalPrice = discountedPrice * sizeCommit.quantity;
+          totalPrice += sizeCommit.totalPrice;
+        });
+      }
+    }
+
     const distributor = await User.findById(deal.distributor);
     if (!distributor) {
       return res.status(404).json({
@@ -50,21 +139,23 @@ router.post("/buy/:dealId", async (req, res) => {
     let isNewCommitment = false;
     
     if (commitment) {
-      commitment.quantity = quantity; // Fix: Set quantity instead of adding to existing quantity
+      commitment.sizeCommitments = processedSizeCommitments;
       commitment.totalPrice = totalPrice;
       commitment.status = "pending";
       commitment.modifiedByDistributor = false;
-      commitment.modifiedQuantity = null;
+      commitment.modifiedSizeCommitments = [];
       commitment.modifiedTotalPrice = null;
+      commitment.appliedDiscountTier = appliedDiscountTier;
       await commitment.save();
     } else {
       isNewCommitment = true;
       commitment = await Commitment.create({
         userId: userId,
         dealId: dealId,
-        quantity,
+        sizeCommitments: processedSizeCommitments,
         totalPrice,
         status: "pending",
+        appliedDiscountTier
       });
       deal.commitments.push(commitment._id);
       await deal.save();
@@ -94,14 +185,22 @@ router.post("/buy/:dealId", async (req, res) => {
     // Remove previous commitment from summary if exists
     summary.commitments = summary.commitments.filter(c => c.commitmentId.toString() !== commitment._id.toString());
     
+    // Add new commitment details with all sizes
     summary.commitments.push({
       commitmentId: commitment._id,
       dealId: dealId,
-      quantity: quantity,
+      sizeDetails: processedSizeCommitments.map(sc => ({
+        size: sc.size,
+        quantity: sc.quantity,
+        pricePerUnit: sc.pricePerUnit,
+        totalPrice: sc.totalPrice
+      })),
+      quantity: totalQuantity,
       totalPrice: totalPrice,
       dealName: deal.name,
-      originalCost: deal.originalCost,
-      discountPrice: deal.discountPrice
+      discountTierApplied: appliedDiscountTier ? 
+        `${appliedDiscountTier.tierDiscount}% at ${appliedDiscountTier.tierQuantity}+ units` : 
+        null
     });
 
     // Recalculate summary totals
@@ -111,13 +210,22 @@ router.post("/buy/:dealId", async (req, res) => {
     
     await summary.save();
 
+    // Generate size details message for notifications
+    const sizeDetailsMessage = processedSizeCommitments.map(sc => 
+      `${sc.size}: ${sc.quantity} units at $${sc.pricePerUnit.toFixed(2)} each`
+    ).join(', ');
+
+    const discountMessage = appliedDiscountTier ? 
+      ` with ${appliedDiscountTier.tierDiscount}% discount (Tier: ${appliedDiscountTier.tierQuantity}+ units)` : 
+      '';
+
     await createNotification({
       recipientId: deal.distributor,
       senderId: userId,
       type: 'commitment',
       subType: 'commitment_created',
       title: 'New Deal Commitment',
-      message: `${user.name} has committed to your deal "${deal.name}" - Quantity: ${quantity}, Total: $${totalPrice}`,
+      message: `${user.name} has committed to your deal "${deal.name}" - Total: ${totalQuantity} units, $${totalPrice.toFixed(2)}${discountMessage}. Size details: ${sizeDetailsMessage}`,
       relatedId: commitment._id,
       onModel: 'Commitment',
       priority: 'high'
@@ -127,7 +235,7 @@ router.post("/buy/:dealId", async (req, res) => {
       type: 'commitment',
       subType: 'commitment_created',
       title: 'New Deal Commitment',
-      message: `${user.name} has committed to deal "${deal.name}" by distributor ${distributor.name}`,
+      message: `${user.name} has committed to deal "${deal.name}" by distributor ${distributor.name} - Total: ${totalQuantity} units${discountMessage}`,
       relatedId: commitment._id,
       onModel: 'Commitment',
       priority: 'medium'
@@ -164,8 +272,7 @@ router.put("/update-status", async (req, res) => {
       commitmentId,
       status,
       distributorResponse,
-      modifiedQuantity,
-      modifiedTotalPrice
+      modifiedSizeCommitments
     } = req.body;
 
     // Validate the status
@@ -202,45 +309,60 @@ router.put("/update-status", async (req, res) => {
     // Store old status for logging
     const oldStatus = commitment.status;
 
-    // If modifying quantity, validate against minimum quantity
-    if (modifiedQuantity && modifiedQuantity < commitment.dealId.minQtyForDiscount) {
-      return res.status(400).json({
-        error: "Invalid quantity",
-        message: `Modified quantity must be at least ${commitment.dealId.minQtyForDiscount}`
-      });
-    }
-
-    // If modifying total price, validate calculation
-    if (modifiedQuantity || modifiedTotalPrice) {
-      const expectedTotal = (modifiedQuantity || commitment.quantity) * commitment.dealId.discountPrice;
-      if (modifiedTotalPrice && Math.abs(modifiedTotalPrice - expectedTotal) > 0.01) {
+    // If modifying size commitments
+    if (modifiedSizeCommitments && Array.isArray(modifiedSizeCommitments) && modifiedSizeCommitments.length > 0) {
+      // Calculate new total quantities and verify all sizes exist in the deal
+      let totalModifiedQuantity = 0;
+      let totalModifiedPrice = 0;
+      
+      for (const sizeCommit of modifiedSizeCommitments) {
+        // Verify size exists in the deal
+        const matchingDealSize = commitment.dealId.sizes.find(s => s.size === sizeCommit.size);
+        if (!matchingDealSize) {
+          return res.status(400).json({
+            error: "Invalid size",
+            message: `Size "${sizeCommit.size}" does not exist in this deal`
+          });
+        }
+        
+        totalModifiedQuantity += sizeCommit.quantity;
+        totalModifiedPrice += sizeCommit.quantity * sizeCommit.pricePerUnit;
+      }
+      
+      // Validate against minimum quantity
+      if (totalModifiedQuantity < commitment.dealId.minQtyForDiscount) {
         return res.status(400).json({
-          error: "Invalid price",
-          message: "Modified total price does not match expected calculation"
+          error: "Invalid quantity",
+          message: `Total modified quantity (${totalModifiedQuantity}) must be at least ${commitment.dealId.minQtyForDiscount}`
         });
       }
+      
+      commitment.modifiedSizeCommitments = modifiedSizeCommitments;
+      commitment.modifiedTotalPrice = totalModifiedPrice;
+      commitment.modifiedByDistributor = true;
     }
 
     // Update commitment
     commitment.status = status;
     commitment.distributorResponse = distributorResponse || commitment.distributorResponse;
-
-    if (modifiedQuantity) {
-      commitment.modifiedQuantity = modifiedQuantity;
-      commitment.modifiedByDistributor = true;
-      commitment.modifiedTotalPrice = modifiedQuantity * commitment.dealId.discountPrice;
-    }
-
+    
     await commitment.save();
 
     // Update deal statistics if commitment is approved
     if (status === 'approved') {
       const deal = await Deal.findById(commitment.dealId);
       if (deal) {
-        const finalQuantity = commitment.modifiedQuantity || commitment.quantity;
-        const finalTotalPrice = commitment.modifiedTotalPrice || commitment.totalPrice;
+        // Use either modified quantities or original quantities
+        const finalSizeCommitments = commitment.modifiedByDistributor ? 
+          commitment.modifiedSizeCommitments : 
+          commitment.sizeCommitments;
+          
+        const finalTotalQuantity = finalSizeCommitments.reduce((sum, sc) => sum + sc.quantity, 0);
+        const finalTotalPrice = commitment.modifiedByDistributor ? 
+          commitment.modifiedTotalPrice : 
+          commitment.totalPrice;
         
-        deal.totalSold = (deal.totalSold || 0) + finalQuantity;
+        deal.totalSold = (deal.totalSold || 0) + finalTotalQuantity;
         deal.totalRevenue = (deal.totalRevenue || 0) + finalTotalPrice;
         
         // Update notification history
@@ -258,12 +380,27 @@ router.put("/update-status", async (req, res) => {
         await deal.save();
       }
     }
+    
+    // Generate size details message for notifications
+    const generateSizeDetailsMessage = (sizeCommitments) => {
+      return sizeCommitments.map(sc => 
+        `${sc.size}: ${sc.quantity} units at $${sc.pricePerUnit.toFixed(2)} each`
+      ).join(', ');
+    };
+
+    const originalSizeDetails = generateSizeDetailsMessage(commitment.sizeCommitments);
+    const modifiedSizeDetails = commitment.modifiedByDistributor ? 
+      generateSizeDetailsMessage(commitment.modifiedSizeCommitments) : null;
+
+    const discountTierMessage = commitment.appliedDiscountTier ? 
+      ` (with ${commitment.appliedDiscountTier.tierDiscount}% discount at ${commitment.appliedDiscountTier.tierQuantity}+ units)` : 
+      '';
 
     // Create detailed log entry
     const logMessage = `Commitment for "${commitment.dealId.name}" by ${commitment.userId.name} changed from ${oldStatus} to ${status}${
       commitment.modifiedByDistributor ? 
-      ` with modifications - Quantity: ${commitment.modifiedQuantity}, Price: $${commitment.modifiedTotalPrice}` : 
-      ''
+      ` with modifications - Original: ${originalSizeDetails}, Modified: ${modifiedSizeDetails}, Total: $${commitment.modifiedTotalPrice}` : 
+      ` - Details: ${originalSizeDetails}${discountTierMessage}, Total: $${commitment.totalPrice}`
     }`;
 
     await Log.create({
@@ -282,7 +419,7 @@ router.put("/update-status", async (req, res) => {
       message: `Your commitment for "${commitment.dealId.name}" has been ${status}${
         distributorResponse ? ` - Message: ${distributorResponse}` : ''
       }${
-        modifiedQuantity ? ` - Modified quantity: ${modifiedQuantity}` : ''
+        modifiedSizeDetails ? ` - Modified sizes: ${modifiedSizeDetails}` : ''
       }`,
       relatedId: commitment._id,
       onModel: 'Commitment',
@@ -306,12 +443,10 @@ router.put("/update-status", async (req, res) => {
       let emailMessage = `Your commitment for deal "${commitment.dealId.name}" has been ${status}`;
       
       if (commitment.modifiedByDistributor) {
-        const savings = (commitment.dealId.originalCost - commitment.dealId.discountPrice) * commitment.modifiedQuantity;
-        emailMessage += `\n\nModified Details:
-- Quantity: ${commitment.modifiedQuantity}
-- Price per unit: $${commitment.dealId.discountPrice}
-- Total Price: $${commitment.modifiedTotalPrice}
-- Total Savings: $${savings}`;
+        emailMessage += `\n\nOriginal Commitment:\n${originalSizeDetails}\nTotal: $${commitment.totalPrice.toFixed(2)}`;
+        emailMessage += `\n\nModified Details:\n${modifiedSizeDetails}\nTotal: $${commitment.modifiedTotalPrice.toFixed(2)}`;
+      } else {
+        emailMessage += `\n\nDetails:\n${originalSizeDetails}${discountTierMessage}\nTotal: $${commitment.totalPrice.toFixed(2)}`;
       }
 
       if (distributorResponse) {
@@ -327,15 +462,10 @@ router.put("/update-status", async (req, res) => {
         const commitmentInfo = {
           dealName: commitment.dealId.name,
           status: status,
-          quantity: commitment.modifiedQuantity || commitment.quantity,
-          totalPrice: commitment.modifiedTotalPrice || commitment.totalPrice,
-          originalCost: commitment.dealId.originalCost,
-          discountPrice: commitment.dealId.discountPrice,
-          modifiedDetails: commitment.modifiedByDistributor ? {
-            quantity: commitment.modifiedQuantity,
-            price: commitment.modifiedTotalPrice,
-            message: distributorResponse
-          } : null
+          details: commitment.modifiedByDistributor ? 
+            `Modified: ${modifiedSizeDetails}, Total: $${commitment.modifiedTotalPrice.toFixed(2)}` : 
+            `${originalSizeDetails}${discountTierMessage}, Total: $${commitment.totalPrice.toFixed(2)}`,
+          message: distributorResponse
         };
         await sendDealMessage.commitmentUpdate(commitment.userId.phone, commitmentInfo);
       } catch (error) {
@@ -364,7 +494,7 @@ router.get("/", async (req, res) => {
     const commitments = await Commitment.find({ userId })
       .populate({
         path: 'dealId',
-        select: 'name description category originalCost discountPrice totalSold totalRevenue views impressions'
+        select: 'name description category sizes totalSold totalRevenue views impressions discountTiers'
       });
     res.json(commitments);
   } catch (error) {
@@ -385,7 +515,7 @@ router.get("/fetch/:userId", async (req, res) => {
     const commitments = await Commitment.find({ userId })
       .populate({
         path: 'dealId',
-        select: 'name description category originalCost discountPrice totalSold totalRevenue views impressions'
+        select: 'name description category sizes totalSold totalRevenue views impressions discountTiers'
       })
       .populate({
         path: 'userId',
@@ -425,7 +555,7 @@ router.get("/distributor-commitments/:distributorId", async (req, res) => {
     })
     .populate({
       path: 'dealId',
-      select: 'name description category originalCost discountPrice totalSold totalRevenue views impressions'
+      select: 'name description category sizes totalSold totalRevenue views impressions discountTiers'
     })
     .populate({
       path: 'userId',
@@ -457,7 +587,7 @@ router.get("/details/:commitmentId", async (req, res) => {
                 .populate('userId', 'name email phone role')
                 .populate({
                     path: 'dealId',
-                    select: 'name description category originalCost discountPrice distributor',
+                    select: 'name description category sizes distributor discountTiers',
                     populate: {
                         path: 'distributor',
                         select: 'name email role _id'
@@ -495,7 +625,7 @@ router.get("/admin/all-commitments", async (req, res) => {
     const commitments = await Commitment.find({})
       .populate({
         path: 'dealId',
-        select: 'name description category distributor originalCost discountPrice totalSold totalRevenue views impressions',
+        select: 'name description category distributor sizes discountTiers totalSold totalRevenue views impressions',
         populate: {
           path: 'distributor',
           select: 'name email phone'
@@ -521,108 +651,100 @@ router.get("/admin/all-commitments", async (req, res) => {
 router.get("/admin/statistics", async (req, res) => {
   try {
     // Get overall statistics
-    const stats = await Commitment.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalCommitments: { $sum: 1 },
-          totalAmount: { $sum: "$totalPrice" },
-          pendingCount: {
-            $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] }
-          },
-          approvedCount: {
-            $sum: { $cond: [{ $eq: ["$status", "approved"] }, 1, 0] }
-          },
-          declinedCount: {
-            $sum: { $cond: [{ $eq: ["$status", "declined"] }, 1, 0] }
-          },
-          // Add distributor and member stats
-          totalDistributors: { $addToSet: "$dealId.distributor" },
-          totalMembers: { $addToSet: "$userId" },
-          // Add average transaction value
-          avgTransactionValue: { $avg: "$totalPrice" }
-        }
+    const commitments = await Commitment.find({}).populate('dealId');
+    
+    // Calculate totals manually to handle the new sizeCommitments structure
+    let totalCommitments = commitments.length;
+    let totalAmount = 0;
+    let pendingCount = 0;
+    let approvedCount = 0;
+    let declinedCount = 0;
+    let totalDistributors = new Set();
+    let totalMembers = new Set();
+    let totalQuantity = 0;
+    
+    commitments.forEach(commitment => {
+      // Add up financial data
+      totalAmount += commitment.totalPrice || 0;
+      
+      // Count by status
+      if (commitment.status === 'pending') pendingCount++;
+      if (commitment.status === 'approved') approvedCount++;
+      if (commitment.status === 'declined') declinedCount++;
+      
+      // Track unique users
+      if (commitment.userId) totalMembers.add(commitment.userId.toString());
+      if (commitment.dealId && commitment.dealId.distributor) {
+        totalDistributors.add(commitment.dealId.distributor.toString());
       }
-    ]);
+      
+      // Calculate total quantity across all size commitments
+      if (commitment.sizeCommitments && Array.isArray(commitment.sizeCommitments)) {
+        commitment.sizeCommitments.forEach(sc => {
+          totalQuantity += sc.quantity || 0;
+        });
+      }
+    });
+    
+    // Calculate average transaction value
+    const avgTransactionValue = totalCommitments > 0 ? totalAmount / totalCommitments : 0;
 
     // Get timeline data for the last 30 days
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Enhanced timeline data with more metrics
-    const timelineData = await Commitment.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: thirtyDaysAgo }
+    // Group commitments by date and status
+    const timelineMap = {};
+    commitments.forEach(commitment => {
+      if (commitment.createdAt >= thirtyDaysAgo) {
+        const dateKey = commitment.createdAt.toISOString().slice(0, 10);
+        
+        if (!timelineMap[dateKey]) {
+          timelineMap[dateKey] = {
+            pending: 0, pendingAmount: 0,
+            approved: 0, approvedAmount: 0,
+            declined: 0, declinedAmount: 0,
+            cancelled: 0, cancelledAmount: 0,
+            total: 0, totalAmount: 0,
+            uniqueMembers: new Set(),
+            uniqueDistributors: new Set()
+          };
         }
-      },
-      {
-        $lookup: {
-          from: 'deals',
-          localField: 'dealId',
-          foreignField: '_id',
-          as: 'deal'
+        
+        // Increment counts by status
+        timelineMap[dateKey][commitment.status]++;
+        timelineMap[dateKey][`${commitment.status}Amount`] += commitment.totalPrice || 0;
+        timelineMap[dateKey].total++;
+        timelineMap[dateKey].totalAmount += commitment.totalPrice || 0;
+        
+        // Track unique users for this day
+        if (commitment.userId) {
+          timelineMap[dateKey].uniqueMembers.add(commitment.userId.toString());
         }
-      },
-      {
-        $group: {
-          _id: {
-            date: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-            status: "$status"
-          },
-          count: { $sum: 1 },
-          amount: { $sum: "$totalPrice" },
-          uniqueMembers: { $addToSet: "$userId" },
-          uniqueDistributors: { $addToSet: { $arrayElemAt: ["$deal.distributor", 0] } }
+        if (commitment.dealId && commitment.dealId.distributor) {
+          timelineMap[dateKey].uniqueDistributors.add(commitment.dealId.distributor.toString());
         }
-      },
-      {
-        $group: {
-          _id: "$_id.date",
-          statuses: {
-            $push: {
-              status: "$_id.status",
-              count: "$count",
-              amount: "$amount",
-              uniqueMembers: { $size: "$uniqueMembers" },
-              uniqueDistributors: { $size: "$uniqueDistributors" }
-            }
-          }
-        }
-      },
-      {
-        $sort: { _id: 1 }
       }
-    ]);
-
-    // Format timeline data with enhanced metrics
-    const formattedTimelineData = timelineData.map(day => {
-      const dayData = {
-        date: day._id,
-        pending: 0,
-        approved: 0,
-        declined: 0,
-        cancelled: 0,
-        pendingAmount: 0,
-        approvedAmount: 0,
-        declinedAmount: 0,
-        cancelledAmount: 0,
-        total: 0,
-        totalAmount: 0,
-        uniqueMembers: 0,
-        uniqueDistributors: 0
+    });
+    
+    // Format timeline data
+    const formattedTimelineData = Object.keys(timelineMap).sort().map(date => {
+      const dayData = timelineMap[date];
+      return {
+        date,
+        pending: dayData.pending,
+        approved: dayData.approved,
+        declined: dayData.declined,
+        cancelled: dayData.cancelled,
+        pendingAmount: dayData.pendingAmount,
+        approvedAmount: dayData.approvedAmount,
+        declinedAmount: dayData.declinedAmount,
+        cancelledAmount: dayData.cancelledAmount,
+        total: dayData.total,
+        totalAmount: dayData.totalAmount,
+        uniqueMembers: dayData.uniqueMembers.size,
+        uniqueDistributors: dayData.uniqueDistributors.size
       };
-
-      day.statuses.forEach(status => {
-        dayData[status.status] = status.count;
-        dayData[`${status.status}Amount`] = status.amount;
-        dayData.total += status.count;
-        dayData.totalAmount += status.amount;
-        dayData.uniqueMembers = Math.max(dayData.uniqueMembers, status.uniqueMembers);
-        dayData.uniqueDistributors = Math.max(dayData.uniqueDistributors, status.uniqueDistributors);
-      });
-
-      return dayData;
     });
 
     // Calculate growth rates
@@ -642,48 +764,54 @@ router.get("/admin/statistics", async (req, res) => {
     };
 
     // Get top distributors
-    const topDistributors = await Commitment.aggregate([
-      {
-        $lookup: {
-          from: 'deals',
-          localField: 'dealId',
-          foreignField: '_id',
-          as: 'deal'
+    const distributorStats = {};
+    commitments.forEach(commitment => {
+      if (commitment.dealId && commitment.dealId.distributor) {
+        const distributorId = commitment.dealId.distributor.toString();
+        
+        if (!distributorStats[distributorId]) {
+          distributorStats[distributorId] = {
+            _id: distributorId,
+            totalCommitments: 0,
+            totalAmount: 0,
+            approvedCount: 0,
+            distributor: commitment.dealId.distributor,
+            name: commitment.dealId.distributor.name || 'Unknown',
+            email: commitment.dealId.distributor.email || '',
+          };
         }
-      },
-      {
-        $group: {
-          _id: { $arrayElemAt: ["$deal.distributor", 0] },
-          totalCommitments: { $sum: 1 },
-          totalAmount: { $sum: "$totalPrice" },
-          successRate: {
-            $avg: { $cond: [{ $eq: ["$status", "approved"] }, 1, 0] }
-          }
+        
+        distributorStats[distributorId].totalCommitments++;
+        distributorStats[distributorId].totalAmount += commitment.totalPrice || 0;
+        
+        if (commitment.status === 'approved') {
+          distributorStats[distributorId].approvedCount++;
         }
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: '_id',
-          foreignField: '_id',
-          as: 'distributor'
-        }
-      },
-      {
-        $sort: { totalAmount: -1 }
-      },
-      {
-        $limit: 5
       }
-    ]);
+    });
+    
+    // Calculate success rate and format top distributors
+    const topDistributors = Object.values(distributorStats)
+      .map(dist => ({
+        ...dist,
+        successRate: dist.totalCommitments > 0 ? (dist.approvedCount / dist.totalCommitments) : 0
+      }))
+      .sort((a, b) => b.totalAmount - a.totalAmount)
+      .slice(0, 5);
 
     res.json({
-      ...stats[0],
+      totalCommitments,
+      totalAmount,
+      totalQuantity,
+      pendingCount,
+      approvedCount,
+      declinedCount,
       timelineData: formattedTimelineData,
       topDistributors,
       growth,
-      totalDistributors: stats[0].totalDistributors?.length || 0,
-      totalMembers: stats[0].totalMembers?.length || 0
+      totalDistributors: totalDistributors.size,
+      totalMembers: totalMembers.size,
+      avgTransactionValue
     });
   } catch (error) {
     console.error("Error fetching commitment statistics:", error);

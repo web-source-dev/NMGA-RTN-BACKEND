@@ -80,6 +80,12 @@ app.use("/api/users", require("./routes/User"))
 app.use("/api/contact", require("./routes/ContactUs"))
 app.use("/api/distributor", require("./routes/AllMemberDistributor"))
 
+// Import the MediaManager routes
+const mediaManagerRoutes = require("./routes/MediaManager/MediaManager");
+
+// Use the MediaManager routes
+app.use("/api/media-manager", mediaManagerRoutes);
+
 // Add this near the start of your application
 const validateEnvVariables = () => {
     const required = [

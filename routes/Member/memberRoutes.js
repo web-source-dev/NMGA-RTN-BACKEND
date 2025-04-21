@@ -6,6 +6,8 @@ const Deal = require('../../models/Deals');
 const Commitment = require('../../models/Commitments');
 const Favorite = require('../../models/Favorite');
 const bcrypt = require('bcryptjs');
+const Log = require('../../models/Logs');
+
 // Get member stats
 router.get('/stats/:userId', async (req, res) => {
   try {
@@ -86,7 +88,7 @@ router.get('/commitments/:userId', async (req, res) => {
   try {
     const commitments = await Commitment.find({ userId: req.params.userId })
       .sort({ createdAt: -1 })
-      .populate('dealId', 'name')
+      .populate('dealId', 'name category')
       .populate('userId', 'name');
     
     res.json(commitments);
@@ -145,6 +147,12 @@ router.post('/commitments/:commitmentId/cancel', async (req, res) => {
 
     commitment.status = 'cancelled';
     await commitment.save();
+
+    await Log.create({
+      message: `Commitment ${commitment._id} cancelled by user`,
+      type: 'info',
+      user_id: commitment.userId
+    });
     
     res.json({ message: 'Commitment cancelled successfully' });
   } catch (error) {
@@ -177,8 +185,23 @@ router.get('/analytics/:userId', async (req, res) => {
       
       const amount = monthCommitments.reduce((sum, c) => 
         sum + (c.modifiedTotalPrice || c.totalPrice), 0);
-      const savings = monthCommitments.reduce((sum, c) => 
-        sum + (c.dealId.originalCost * c.quantity - (c.modifiedTotalPrice || c.totalPrice)), 0);
+      
+      // Calculate savings based on size commitments
+      const savings = monthCommitments.reduce((sum, c) => {
+        let originalCost = 0;
+        const sizeCommitments = c.modifiedByDistributor ? c.modifiedSizeCommitments : c.sizeCommitments;
+        
+        if (sizeCommitments && Array.isArray(sizeCommitments)) {
+          sizeCommitments.forEach(size => {
+            const dealSize = c.dealId.sizes.find(ds => ds.size === size.size);
+            if (dealSize) {
+              originalCost += dealSize.originalCost * size.quantity;
+            }
+          });
+        }
+        
+        return sum + (originalCost - (c.modifiedTotalPrice || c.totalPrice));
+      }, 0);
       
       return { month, amount, savings };
     }).reverse();
@@ -342,14 +365,34 @@ router.get('/detailed-analytics/:userId', async (req, res) => {
             year: { $year: '$createdAt' },
             month: { $month: '$createdAt' }
           },
-          totalSpent: { $sum: '$totalPrice' },
+          totalSpent: { $sum: { $ifNull: ['$modifiedTotalPrice', '$totalPrice'] } },
           count: { $sum: 1 },
           savings: {
             $sum: {
-              $subtract: [
-                { $multiply: ['$deal.originalCost', '$quantity'] },
-                '$totalPrice'
-              ]
+              $cond: {
+                if: { $isArray: '$sizeCommitments' },
+                then: {
+                  $reduce: {
+                    input: {
+                      $cond: [
+                        { $eq: ['$modifiedByDistributor', true] },
+                        { $ifNull: ['$modifiedSizeCommitments', '$sizeCommitments'] },
+                        '$sizeCommitments'
+                      ]
+                    },
+                    initialValue: 0,
+                    in: {
+                      $add: ['$$value', { $multiply: ['$$this.quantity', '$$this.pricePerUnit'] }]
+                    }
+                  }
+                },
+                else: {
+                  $subtract: [
+                    { $multiply: ['$deal.originalCost', { $ifNull: ['$modifiedQuantity', '$quantity'] }] },
+                    { $ifNull: ['$modifiedTotalPrice', '$totalPrice'] }
+                  ]
+                }
+              }
             }
           },
           averageDiscount: {
@@ -385,14 +428,72 @@ router.get('/detailed-analytics/:userId', async (req, res) => {
         $group: {
           _id: '$deal.category',
           count: { $sum: 1 },
-          totalSpent: { $sum: '$totalPrice' },
-          averageSpent: { $avg: '$totalPrice' },
+          totalSpent: { $sum: { $ifNull: ['$modifiedTotalPrice', '$totalPrice'] } },
+          averageSpent: { $avg: { $ifNull: ['$modifiedTotalPrice', '$totalPrice'] } },
           totalSavings: {
             $sum: {
-              $subtract: [
-                { $multiply: ['$deal.originalCost', '$quantity'] },
-                '$totalPrice'
-              ]
+              $cond: {
+                if: { $isArray: '$sizeCommitments' },
+                then: {
+                  $let: {
+                    vars: {
+                      effectiveSizeCommitments: {
+                        $cond: [
+                          { $eq: ['$modifiedByDistributor', true] },
+                          { $ifNull: ['$modifiedSizeCommitments', '$sizeCommitments'] },
+                          '$sizeCommitments'
+                        ]
+                      }
+                    },
+                    in: {
+                      $subtract: [
+                        {
+                          $reduce: {
+                            input: '$$effectiveSizeCommitments',
+                            initialValue: 0,
+                            in: {
+                              $add: [
+                                '$$value',
+                                {
+                                  $multiply: [
+                                    '$$this.quantity',
+                                    {
+                                      $let: {
+                                        vars: {
+                                          matchingSize: {
+                                            $arrayElemAt: [
+                                              {
+                                                $filter: {
+                                                  input: '$deal.sizes',
+                                                  as: 'size',
+                                                  cond: { $eq: ['$$size.size', '$$this.size'] }
+                                                }
+                                              },
+                                              0
+                                            ]
+                                          }
+                                        },
+                                        in: { $ifNull: ['$$matchingSize.originalCost', 0] }
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        { $ifNull: ['$modifiedTotalPrice', '$totalPrice'] }
+                      ]
+                    }
+                  }
+                },
+                else: {
+                  $subtract: [
+                    { $multiply: ['$deal.originalCost', { $ifNull: ['$modifiedQuantity', '$quantity'] }] },
+                    { $ifNull: ['$modifiedTotalPrice', '$totalPrice'] }
+                  ]
+                }
+              }
             }
           }
         }
@@ -416,7 +517,7 @@ router.get('/detailed-analytics/:userId', async (req, res) => {
       }
     ]);
 
-    // Detailed savings analysis
+    // Simplified savings analysis without complex size calculations
     const savingsAnalysis = await Commitment.aggregate([
       {
         $match: matchStage
@@ -437,30 +538,204 @@ router.get('/detailed-analytics/:userId', async (req, res) => {
           _id: null,
           totalSavings: {
             $sum: {
-              $subtract: [
-                { $multiply: ['$deal.originalCost', '$quantity'] },
-                '$totalPrice'
-              ]
+              $cond: {
+                if: { $isArray: '$sizeCommitments' },
+                then: {
+                  $let: {
+                    vars: {
+                      effectiveSizeCommitments: {
+                        $cond: [
+                          { $eq: ['$modifiedByDistributor', true] },
+                          { $ifNull: ['$modifiedSizeCommitments', '$sizeCommitments'] },
+                          '$sizeCommitments'
+                        ]
+                      }
+                    },
+                    in: {
+                      $subtract: [
+                        {
+                          $reduce: {
+                            input: '$$effectiveSizeCommitments',
+                            initialValue: 0,
+                            in: {
+                              $add: [
+                                '$$value',
+                                {
+                                  $multiply: [
+                                    '$$this.quantity',
+                                    {
+                                      $let: {
+                                        vars: {
+                                          matchingSize: {
+                                            $arrayElemAt: [
+                                              {
+                                                $filter: {
+                                                  input: '$deal.sizes',
+                                                  as: 'size',
+                                                  cond: { $eq: ['$$size.size', '$$this.size'] }
+                                                }
+                                              },
+                                              0
+                                            ]
+                                          }
+                                        },
+                                        in: { $ifNull: ['$$matchingSize.originalCost', 0] }
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        { $ifNull: ['$modifiedTotalPrice', '$totalPrice'] }
+                      ]
+                    }
+                  }
+                },
+                else: {
+                  $subtract: [
+                    { $multiply: ['$deal.originalCost', { $ifNull: ['$modifiedQuantity', '$quantity'] }] },
+                    { $ifNull: ['$modifiedTotalPrice', '$totalPrice'] }
+                  ]
+                }
+              }
             }
           },
           averageSavings: {
             $avg: {
-              $subtract: [
-                { $multiply: ['$deal.originalCost', '$quantity'] },
-                '$totalPrice'
-              ]
+              $cond: {
+                if: { $isArray: '$sizeCommitments' },
+                then: {
+                  $let: {
+                    vars: {
+                      effectiveSizeCommitments: {
+                        $cond: [
+                          { $eq: ['$modifiedByDistributor', true] },
+                          { $ifNull: ['$modifiedSizeCommitments', '$sizeCommitments'] },
+                          '$sizeCommitments'
+                        ]
+                      }
+                    },
+                    in: {
+                      $subtract: [
+                        {
+                          $reduce: {
+                            input: '$$effectiveSizeCommitments',
+                            initialValue: 0,
+                            in: {
+                              $add: [
+                                '$$value',
+                                {
+                                  $multiply: [
+                                    '$$this.quantity',
+                                    {
+                                      $let: {
+                                        vars: {
+                                          matchingSize: {
+                                            $arrayElemAt: [
+                                              {
+                                                $filter: {
+                                                  input: '$deal.sizes',
+                                                  as: 'size',
+                                                  cond: { $eq: ['$$size.size', '$$this.size'] }
+                                                }
+                                              },
+                                              0
+                                            ]
+                                          }
+                                        },
+                                        in: { $ifNull: ['$$matchingSize.originalCost', 0] }
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        { $ifNull: ['$modifiedTotalPrice', '$totalPrice'] }
+                      ]
+                    }
+                  }
+                },
+                else: {
+                  $subtract: [
+                    { $multiply: ['$deal.originalCost', { $ifNull: ['$modifiedQuantity', '$quantity'] }] },
+                    { $ifNull: ['$modifiedTotalPrice', '$totalPrice'] }
+                  ]
+                }
+              }
             }
           },
           maxSavings: {
             $max: {
-              $subtract: [
-                { $multiply: ['$deal.originalCost', '$quantity'] },
-                '$totalPrice'
-              ]
+              $cond: {
+                if: { $isArray: '$sizeCommitments' },
+                then: {
+                  $let: {
+                    vars: {
+                      effectiveSizeCommitments: {
+                        $cond: [
+                          { $eq: ['$modifiedByDistributor', true] },
+                          { $ifNull: ['$modifiedSizeCommitments', '$sizeCommitments'] },
+                          '$sizeCommitments'
+                        ]
+                      }
+                    },
+                    in: {
+                      $subtract: [
+                        {
+                          $reduce: {
+                            input: '$$effectiveSizeCommitments',
+                            initialValue: 0,
+                            in: {
+                              $add: [
+                                '$$value',
+                                {
+                                  $multiply: [
+                                    '$$this.quantity',
+                                    {
+                                      $let: {
+                                        vars: {
+                                          matchingSize: {
+                                            $arrayElemAt: [
+                                              {
+                                                $filter: {
+                                                  input: '$deal.sizes',
+                                                  as: 'size',
+                                                  cond: { $eq: ['$$size.size', '$$this.size'] }
+                                                }
+                                              },
+                                              0
+                                            ]
+                                          }
+                                        },
+                                        in: { $ifNull: ['$$matchingSize.originalCost', 0] }
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        { $ifNull: ['$modifiedTotalPrice', '$totalPrice'] }
+                      ]
+                    }
+                  }
+                },
+                else: {
+                  $subtract: [
+                    { $multiply: ['$deal.originalCost', { $ifNull: ['$modifiedQuantity', '$quantity'] }] },
+                    { $ifNull: ['$modifiedTotalPrice', '$totalPrice'] }
+                  ]
+                }
+              }
             }
           },
           totalTransactions: { $sum: 1 },
-          totalSpent: { $sum: '$totalPrice' }
+          totalSpent: { $sum: { $ifNull: ['$modifiedTotalPrice', '$totalPrice'] } }
         }
       },
       {
@@ -522,7 +797,7 @@ router.post('/user/:userId/avatar', async (req, res) => {
     }
 });
 
-// Modify commitment quantity
+// Legacy route for backward compatibility
 router.put('/commitments/:commitmentId/modify', async (req, res) => {
   try {
     const { quantity } = req.body;
@@ -536,21 +811,113 @@ router.put('/commitments/:commitmentId/modify', async (req, res) => {
       return res.status(400).json({ message: 'Only pending commitments can be modified' });
     }
 
-    // Calculate new total price
-    const newTotalPrice = quantity * commitment.dealId.discountPrice;
-
-    // Update commitment
-    commitment.quantity = quantity;
-    commitment.totalPrice = newTotalPrice;
-    await commitment.save();
-
-    res.json({
-      message: 'Commitment quantity modified successfully',
-      commitment
+    // For backward compatibility with older clients
+    res.status(400).json({ 
+      message: 'This API is deprecated. Please use /modify-sizes endpoint for size-specific modifications.' 
     });
   } catch (error) {
     console.error('Error modifying commitment quantity:', error);
     res.status(500).json({ message: 'Error modifying commitment quantity' });
+  }
+});
+
+// New route to modify commitment sizes
+router.put('/commitments/:commitmentId/modify-sizes', async (req, res) => {
+  try {
+    const { sizeCommitments } = req.body;
+    
+    if (!sizeCommitments || !Array.isArray(sizeCommitments) || sizeCommitments.length === 0) {
+      return res.status(400).json({ message: 'Size commitments are required and must be an array' });
+    }
+
+    // Validate each size commitment
+    for (const size of sizeCommitments) {
+      if (!size.size || !size.quantity || size.quantity <= 0 || !size.pricePerUnit) {
+        return res.status(400).json({ message: 'Each size must have a size, quantity greater than 0, and price per unit' });
+      }
+    }
+
+    const commitment = await Commitment.findById(req.params.commitmentId).populate('dealId');
+
+    if (!commitment) {
+      return res.status(404).json({ message: 'Commitment not found' });
+    }
+
+    if (commitment.status !== 'pending') {
+      return res.status(400).json({ message: 'Only pending commitments can be modified' });
+    }
+
+    // Verify all sizes exist in the deal
+    for (const sizeCommit of sizeCommitments) {
+      const matchingDealSize = commitment.dealId.sizes.find(s => s.size === sizeCommit.size);
+      if (!matchingDealSize) {
+        return res.status(400).json({
+          message: `Size "${sizeCommit.size}" does not exist in this deal`
+        });
+      }
+    }
+
+    // Calculate total price
+    const totalPrice = sizeCommitments.reduce((sum, size) => {
+      return sum + (size.quantity * size.pricePerUnit);
+    }, 0);
+
+    // Check if discount tier should be applied
+    const totalQuantity = sizeCommitments.reduce((sum, size) => sum + size.quantity, 0);
+    
+    let appliedDiscountTier = null;
+    if (commitment.dealId.discountTiers && commitment.dealId.discountTiers.length > 0) {
+      // Sort tiers by quantity in descending order to find highest applicable tier
+      const sortedTiers = [...commitment.dealId.discountTiers].sort((a, b) => b.tierQuantity - a.tierQuantity);
+      
+      // Find highest applicable tier
+      for (const tier of sortedTiers) {
+        if (totalQuantity >= tier.tierQuantity) {
+          appliedDiscountTier = tier;
+          break;
+        }
+      }
+    }
+
+    // Calculate final price with discount if applicable
+    let finalPrice = totalPrice;
+    
+    if (appliedDiscountTier) {
+      const discountRate = appliedDiscountTier.tierDiscount / 100;
+      finalPrice = totalPrice * (1 - discountRate);
+      
+      // Apply discount to each size
+      for (const size of sizeCommitments) {
+        size.pricePerUnit = size.pricePerUnit * (1 - discountRate);
+        size.totalPrice = size.quantity * size.pricePerUnit;
+      }
+    } else {
+      // Calculate total price for each size
+      for (const size of sizeCommitments) {
+        size.totalPrice = size.quantity * size.pricePerUnit;
+      }
+    }
+
+    // Update commitment
+    commitment.sizeCommitments = sizeCommitments;
+    commitment.totalPrice = finalPrice;
+    commitment.appliedDiscountTier = appliedDiscountTier;
+    
+    await commitment.save();
+
+    await Log.create({
+      message: `Commitment ${commitment._id} modified by user - Sizes: ${sizeCommitments.length}, Total: ${totalQuantity} units, $${finalPrice.toFixed(2)}`,
+      type: 'info',
+      user_id: commitment.userId
+    });
+
+    res.json({
+      message: 'Commitment modified successfully',
+      commitment
+    });
+  } catch (error) {
+    console.error('Error modifying commitment:', error);
+    res.status(500).json({ message: 'Error modifying commitment' });
   }
 });
 

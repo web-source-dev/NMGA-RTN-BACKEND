@@ -5,15 +5,20 @@ const dealSchema = new mongoose.Schema({
     type: String,
   },
   description: String,
-  size: {
-    type: String,
-  },
-  originalCost: {
-    type: Number,
-  },
-  discountPrice: {
-    type: Number,
-  },
+  sizes: [{
+    size: {
+      type: String,
+      required: true
+    },
+    originalCost: {
+      type: Number,
+      required: true
+    },
+    discountPrice: {
+      type: Number,
+      required: true
+    }
+  }],
   distributor: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -39,6 +44,14 @@ const dealSchema = new mongoose.Schema({
   minQtyForDiscount: {
     type: Number,
   },
+  discountTiers: [{
+    tierQuantity: {
+      type: Number,
+    },
+    tierDiscount: {
+      type: Number, // Percentage discount
+    }
+  }],
   images: [{
     type: String,
   }],
