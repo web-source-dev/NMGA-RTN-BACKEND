@@ -72,17 +72,79 @@ const handleMulterError = (err, req, res, next) => {
 router.get('/:distributorId', async (req, res) => {
   try {
     const { distributorId } = req.params;
+    const { monthFilter } = req.query; // Get monthFilter from query params
     
+    // Create date filter for comparisons
+    let dateFilter = {};
+    let startOfMonth, endOfMonth;
+    
+    if (monthFilter && monthFilter !== 'all') {
+      if (monthFilter === 'current') {
+        // Current month filter
+        const now = new Date();
+        startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      } else if (monthFilter.match(/^\d{4}-\d{2}$/)) {
+        // Specific month in format YYYY-MM
+        const [year, month] = monthFilter.split('-').map(num => parseInt(num));
+        startOfMonth = new Date(year, month - 1, 1);
+        endOfMonth = new Date(year, month, 0, 23, 59, 59);
+      }
+      
+      if (startOfMonth && endOfMonth) {
+        dateFilter = {
+          createdAt: { 
+            $gte: startOfMonth,
+            $lte: endOfMonth
+          }
+        };
+      }
+    }
+    
+    // Get all deals for the distributor
     const deals = await Deal.find({ distributor: distributorId })
       .select('_id name description category status dealStartAt dealEndsAt images')
       .lean();
     
+    // If filtering by month, first find all deals with comparisons in that month
+    let dealsWithComparisonsInMonth = [];
+    
+    if (monthFilter && monthFilter !== 'all') {
+      // Find all comparisons in the selected month
+      const comparisonsInMonth = await Compare.find({
+        distributorId,
+        ...dateFilter
+      }).select('dealId').lean();
+      
+      // Get unique deal IDs
+      const dealIdsWithComparisons = [...new Set(comparisonsInMonth.map(comp => comp.dealId.toString()))];
+      
+      // Only keep deals that have comparisons in the selected month
+      dealsWithComparisonsInMonth = deals.filter(deal => 
+        dealIdsWithComparisons.includes(deal._id.toString())
+      );
+    } else {
+      // If showing all months, include all deals
+      dealsWithComparisonsInMonth = deals;
+    }
+    
     // Get comparison data for each deal
-    const dealsWithCompareStatus = await Promise.all(deals.map(async (deal) => {
-      const latestCompare = await Compare.findOne({ 
+    const dealsWithCompareStatus = await Promise.all(dealsWithComparisonsInMonth.map(async (deal) => {
+      // Find the latest comparison with date filter
+      const query = { 
         dealId: deal._id,
         distributorId
-      }).sort({ createdAt: -1 }).select('createdAt summary').lean();
+      };
+      
+      // Add date filter only if filtering by month
+      if (monthFilter && monthFilter !== 'all') {
+        Object.assign(query, dateFilter);
+      }
+      
+      const latestCompare = await Compare.findOne(query)
+        .sort({ createdAt: -1 })
+        .select('createdAt summary')
+        .lean();
       
       return {
         ...deal,
@@ -360,10 +422,41 @@ router.get('/details/:compareId', async (req, res) => {
 router.get('/history/:dealId/:distributorId', async (req, res) => {
   try {
     const { dealId, distributorId } = req.params;
+    const { monthFilter } = req.query; // Get monthFilter from query params
+    
+    // Create date filter query
+    let dateFilter = {};
+    
+    if (monthFilter) {
+      if (monthFilter === 'current') {
+        // Current month filter
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+        dateFilter = {
+          createdAt: { 
+            $gte: startOfMonth,
+            $lte: endOfMonth
+          }
+        };
+      } else if (monthFilter.match(/^\d{4}-\d{2}$/)) {
+        // Specific month in format YYYY-MM
+        const [year, month] = monthFilter.split('-').map(num => parseInt(num));
+        const startOfMonth = new Date(year, month - 1, 1);
+        const endOfMonth = new Date(year, month, 0, 23, 59, 59);
+        dateFilter = {
+          createdAt: { 
+            $gte: startOfMonth,
+            $lte: endOfMonth
+          }
+        };
+      }
+    }
     
     const comparisons = await Compare.find({ 
       dealId,
-      distributorId
+      distributorId,
+      ...dateFilter
     })
     .sort({ createdAt: -1 })
     .select('_id dealName fileName uploadDate summary createdAt')
