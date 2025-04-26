@@ -1,55 +1,65 @@
-// migrateDeals.js
-// Script to migrate existing deals from the old schema to the new schema structure.
-// Usage: set MONGO_URI in your environment (e.g., in a .env file), then run:
-//   node migrateDeals.js
-
-require('dotenv').config();
 const mongoose = require('mongoose');
-const Deal = require('./models/Deals'); // Adjust the path if your Deal model is in a different directory
+const Deal = require('./models/Deals');
+require('dotenv').config();
 
-async function migrate() {
-  try {
-    // Connect to MongoDB
-    await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    });
-    console.log('Connected to MongoDB');
-
-    // Match all deals that still have the old 'size', 'originalCost', and 'discountPrice' fields
-    const query = { size: { $exists: true } };
-
-    // Use an aggregation pipeline update (MongoDB 4.2+)
-    const updatePipeline = [
-      {
-        $set: {
-          // Create the new 'sizes' array from the old fields
-          sizes: [{
-            size: '$size',
-            originalCost: '$originalCost',
-            discountPrice: '$discountPrice'
-          }],
-          // Initialize discountTiers to an empty array
-          discountTiers: []
-        }
-      },
-      {
-        // Remove the old fields
-        $unset: ['size', 'originalCost', 'discountPrice']
-      }
-    ];
-
-    // Perform the update
-    const result = await Deal.updateMany(query, updatePipeline);
-    console.log(`Matched ${result.matchedCount} documents, Modified ${result.modifiedCount} documents`);
-
-    // Disconnect when done
-    await mongoose.disconnect();
-    console.log('Disconnected from MongoDB');
-  } catch (error) {
-    console.error('Migration error:', error);
+// Connect to MongoDB
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => console.log('MongoDB connected successfully'))
+  .catch(err => {
+    console.error('MongoDB connection error:', err);
     process.exit(1);
+  });
+
+async function migrateDealsStartDate() {
+  try {
+    console.log('Starting migration of missing dealStartAt dates...');
+    
+    // Create the target date (April 20th of current year)
+    const currentYear = new Date().getFullYear();
+    const targetDate = new Date(currentYear, 3, 20); // Month is 0-indexed (3 = April)
+    
+    // Find all deals where dealStartAt is undefined, null, or doesn't exist
+    const result = await Deal.updateMany(
+      { 
+        $or: [
+          { dealStartAt: { $exists: false } },
+          { dealStartAt: null }
+        ] 
+      },
+      { 
+        $set: { dealStartAt: targetDate } 
+      }
+    );
+    
+    console.log(`Migration completed successfully!`);
+    console.log(`Updated ${result.modifiedCount} out of ${result.matchedCount} deals.`);
+    
+    // Find and log some details about the updated deals for verification
+    const updatedDeals = await Deal.find(
+      { dealStartAt: targetDate }
+    ).select('_id name dealStartAt dealEndsAt').limit(10);
+    
+    console.log('Sample of updated deals:');
+    updatedDeals.forEach(deal => {
+      console.log(`- ${deal.name || 'Unnamed deal'} (ID: ${deal._id}): Start date set to ${deal.dealStartAt.toDateString()}`);
+    });
+  } catch (error) {
+    console.error('Error during migration:', error);
+  } finally {
+    // Close the database connection
+    await mongoose.connection.close();
+    console.log('Database connection closed');
   }
 }
 
-migrate();
+// Execute the migration
+migrateDealsStartDate()
+  .then(() => {
+    console.log('Migration script completed');
+    process.exit(0);
+  })
+  .catch(err => {
+    console.error('Migration failed:', err);
+    process.exit(1);
+  });
