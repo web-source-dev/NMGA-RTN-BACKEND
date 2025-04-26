@@ -196,15 +196,30 @@ router.put("/unassign/:supplierId", async (req, res) => {
 router.get("/committed-members/:distributorId", async (req, res) => {
   try {
     const { distributorId } = req.params;
+    const { month, year } = req.query; // Add month and year query parameters
     
     // Find all deals by this distributor
     const deals = await Deal.find({ distributor: distributorId });
     const dealIds = deals.map(deal => deal._id);
     
-    // Find all commitments for these deals
-    const commitments = await Commitment.find({
+    // Base query for commitments
+    let commitmentsQuery = {
       dealId: { $in: dealIds }
-    })
+    };
+    
+    // Add date filtering if month and year are provided
+    if (month && year) {
+      const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+      const endDate = new Date(parseInt(year), parseInt(month), 0); // Last day of the month
+      
+      commitmentsQuery.createdAt = {
+        $gte: startDate,
+        $lte: endDate
+      };
+    }
+    
+    // Find all commitments for these deals with optional date filtering
+    const commitments = await Commitment.find(commitmentsQuery)
     .populate("userId", "name email businessName phone address")
     .populate({
       path: "dealId",
