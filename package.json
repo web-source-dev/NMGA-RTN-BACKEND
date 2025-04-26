@@ -16,7 +16,7 @@
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.0",
     "body-parser": "^1.20.3",
-    "cloudinary": "^2.6.0",
+    "cloudinary": "^1.41.3",
     "convert-array-to-csv": "^2.0.0",
     "cors": "^2.8.5",
     "csv-parser": "^3.2.0",
