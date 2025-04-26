@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const Deal = require('../../models/Deals');
-const Commitment = require('../../models/Commitments');
 
 router.get('/', async (req, res) => {
   try {
