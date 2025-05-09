@@ -81,9 +81,9 @@ router.post('/create', async (req, res) => {
           });
         }
         
-        if (discountTiers[i].tierDiscount <= discountTiers[i-1].tierDiscount) {
+        if (discountTiers[i].tierDiscount >= discountTiers[i-1].tierDiscount) {
           return res.status(400).json({
-            message: 'Discount percentages must increase with each tier'
+            message: 'Discount prices must decrease with each tier'
           });
         }
       }

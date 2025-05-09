@@ -108,7 +108,8 @@ router.put("/assign/:supplierId", async (req, res) => {
       });
     }
     
-    // Check if this member is already assigned to this supplier
+    // Allow assigning a member to multiple suppliers
+    // Check if this member is already assigned to this specific supplier to avoid duplicates
     if (supplier.assignedTo && supplier.assignedTo.includes(memberId)) {
       return res.status(400).json({
         success: false,
@@ -133,10 +134,17 @@ router.put("/assign/:supplierId", async (req, res) => {
     
     await supplier.save();
     
+    // Get all suppliers assigned to this member for the response
+    const assignedSuppliers = await Supplier.find({
+      assignedTo: { $in: [memberId] },
+      assignedBy: distributorId
+    });
+    
     res.status(200).json({
       success: true,
       message: "Supplier assigned successfully",
       supplier,
+      assignedSuppliers
     });
   } catch (error) {
     res.status(500).json({
@@ -251,15 +259,16 @@ router.get("/committed-members/:distributorId", async (req, res) => {
     // Convert to array and get assigned suppliers
     const members = await Promise.all(
       Object.values(userCommitments).map(async (item) => {
-        // Find suppliers where this member is in the assignedTo array
-        const assignedSupplier = await Supplier.findOne({ 
+        // Find ALL suppliers where this member is in the assignedTo array
+        const assignedSuppliers = await Supplier.find({ 
           assignedTo: { $in: [item.user._id] },
           assignedBy: distributorId
         });
         
         return {
           ...item,
-          supplier: assignedSupplier || null
+          suppliers: assignedSuppliers || [],
+          supplier: assignedSuppliers.length > 0 ? assignedSuppliers[0] : null // Keep for backward compatibility
         };
       })
     );
@@ -309,11 +318,14 @@ router.get("/export-member-data/:memberId/:distributorId", async (req, res) => {
       });
     }
     
-    // Find supplier where this member is in the assignedTo array
-    const supplier = await Supplier.findOne({
+    // Find all suppliers where this member is in the assignedTo array
+    const suppliers = await Supplier.find({
       assignedTo: { $in: [memberId] },
       assignedBy: distributorId
     });
+    
+    // Keep the first supplier as 'supplier' for backward compatibility
+    const primarySupplier = suppliers.length > 0 ? suppliers[0] : null;
     
     const exportData = {
       member: {
@@ -324,11 +336,16 @@ router.get("/export-member-data/:memberId/:distributorId", async (req, res) => {
         phone: user.phone,
         address: user.address
       },
-      supplier: supplier ? {
-        id: supplier._id,
-        name: supplier.name,
-        email: supplier.email
+      supplier: primarySupplier ? {
+        id: primarySupplier._id,
+        name: primarySupplier.name,
+        email: primarySupplier.email
       } : null,
+      suppliers: suppliers.map(s => ({
+        id: s._id,
+        name: s.name,
+        email: s.email
+      })),
       commitments: commitments.map(c => ({
         id: c._id,
         dealName: c.dealId.name,
