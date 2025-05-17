@@ -3,10 +3,12 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const Deal = require('../../models/Deals');
 const Log = require('../../models/Logs');
+const Supplier = require('../../models/Suppliers');
 
 router.get('/deal/:dealId', async (req, res) => {
   try {
     const { dealId } = req.params;
+    const userId = req.query.userId; // Get the logged-in user's ID from query params
 
     if (!mongoose.Types.ObjectId.isValid(dealId)) {
       return res.status(400).json({ message: 'Invalid deal ID' });
@@ -81,6 +83,15 @@ router.get('/deal/:dealId', async (req, res) => {
       });
     }
 
+    // Check if there are suppliers assigned to this member by the deal's distributor
+    let supplierInfo = [];
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      supplierInfo = await Supplier.find({
+        assignedTo: { $in: [userId] },
+        assignedBy: deal.distributor._id
+      });
+    }
+
     // Add calculated fields to response
     const response = {
       ...deal.toObject(),
@@ -90,7 +101,8 @@ router.get('/deal/:dealId', async (req, res) => {
       totalCommitments: commitmentStats[0]?.totalCommitments || 0,
       totalCommittedQuantity: totalCommittedQuantity,
       sizeCommitments: sizeCommitments,
-      remainingQuantity: Math.max(0, deal.minQtyForDiscount - totalCommittedQuantity)
+      remainingQuantity: Math.max(0, deal.minQtyForDiscount - totalCommittedQuantity),
+      supplierInfo: supplierInfo // Include supplier info in the response if available
     };
 
     res.status(200).json(response);

@@ -80,6 +80,14 @@ const userSchema = new mongoose.Schema({
       },
       dismissedAt: Date
     }]
+  },
+  addedMembers: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User"
+  }],
+  addedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User"
   }
 }, {
   timestamps: true

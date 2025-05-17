@@ -81,6 +81,8 @@ app.use("/api/contact", require("./routes/ContactUs"))
 app.use("/api/distributor", require("./routes/AllMemberDistributor"))
 app.use("/api/suppliers", require("./routes/Suppliers/suppliers"))
 app.use('/api/compare', require("./routes/Compare/Compare"))
+app.use('/newmembers', require('./routes/newmembers/addmembers'));
+app.use('/api/inactive', require('./routes/Common/notcommitingmembers'));
 
 // Import the MediaManager routes
 const mediaManagerRoutes = require("./routes/MediaManager/MediaManager");

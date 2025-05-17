@@ -29,7 +29,7 @@ const sendEmail = async (to, subject, html) => {
   });
 
   const transporter = nodemailer.createTransport({
-    host: "smtp.zoho.com", // Zoho SMTP Server
+    host: "smtp.gmail.com", // Zoho SMTP Server
     port: 465, // Use 465 for SSL (or 587 for TLS)
     secure: true, // true for SSL (465), false for TLS (587)
     auth: {
