@@ -46,7 +46,7 @@ router.get('/', async (req, res) => {
               else: null
             }
           },
-          totalCommitments: { $size: '$commitments' },
+          totalCommitments: { $size: { $ifNull: ['$commitments', []] } },
           totalCommittedQuantity: { 
             $reduce: {
               input: '$commitmentDetails',
@@ -239,7 +239,7 @@ router.get('/buy', async (req, res) => {
               else: null
             }
           },
-          totalCommitments: { $size: '$commitments' },
+          totalCommitments: { $size: { $ifNull: ['$commitments', []] } },
           totalCommittedQuantity: { 
             $reduce: {
               input: '$commitmentDetails',
