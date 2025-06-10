@@ -86,6 +86,13 @@ router.get('/weekly-metrics', async (req, res) => {
             {
                 $project: {
                     _id: 0,
+                    yearWeek: { 
+                        $concat: [
+                            { $toString: '$_id.year' }, 
+                            '-', 
+                            { $toString: '$_id.week' }
+                        ] 
+                    },
                     week: {
                         $concat: [
                             'Week ',
@@ -97,10 +104,22 @@ router.get('/weekly-metrics', async (req, res) => {
                     users: { $size: '$users' }
                 }
             },
-            { $sort: { '_id.year': 1, '_id.week': 1 } }
+            { $sort: { 'yearWeek': 1 } }
         ]);
 
-        res.json(weeklyData);
+        // Make sure we return well-formed data
+        if (weeklyData.length === 0) {
+            // If no data at all, return an empty array
+            return res.json([]);
+        }
+        
+        // Remove the sorting field before sending response
+        const formattedWeeklyData = weeklyData.map(item => {
+            const { yearWeek, ...rest } = item;
+            return rest;
+        });
+
+        res.json(formattedWeeklyData);
     } catch (error) {
         console.error('Error fetching weekly metrics:', error);
         res.status(500).json({ error: 'Internal server error' });
