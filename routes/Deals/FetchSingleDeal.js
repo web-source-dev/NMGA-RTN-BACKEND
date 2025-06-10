@@ -34,7 +34,7 @@ router.get('/deal/:dealId', async (req, res) => {
     await Log.create({
       message: `Deal "${deal.name}" viewed - Views: ${deal.views}, Impressions: ${deal.impressions}, Avg Original: $${avgOriginalCost.toFixed(2)}, Avg Discount: $${avgDiscountPrice.toFixed(2)}, Sizes: ${deal.sizes.length}`,
       type: 'info',
-      user_id: deal.distributor._id
+      user_id: deal.distributor ? deal.distributor._id : null
     });
 
     // Calculate average savings information
@@ -88,7 +88,7 @@ router.get('/deal/:dealId', async (req, res) => {
     if (userId && mongoose.Types.ObjectId.isValid(userId)) {
       supplierInfo = await Supplier.find({
         assignedTo: { $in: [userId] },
-        assignedBy: deal.distributor._id
+        assignedBy: deal.distributor ? deal.distributor._id : null
       });
     }
 

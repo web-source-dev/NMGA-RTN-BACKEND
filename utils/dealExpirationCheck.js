@@ -88,7 +88,7 @@ const checkDealExpiration = async () => {
                 title: deal.name,
                 expiryDate: deal.dealEndsAt,
                 timeRemaining: interval.label,
-                distributorName: deal.distributor.name,
+                distributorName: deal.distributor ? deal.distributor.name : 'Unknown Distributor',
                 currentPrice: deal.coopPrice,
                 status: deal.status
               };
@@ -97,6 +97,12 @@ const checkDealExpiration = async () => {
                 await sendDealMessage.dealExpiration(member.phone, dealInfo);
               } catch (error) {
                 console.error(`Failed to send expiration notice to ${member.name}:`, error);
+                // Log SMS failure but continue execution
+                await Log.create({
+                  message: `Failed to send SMS ${interval.label} notification to ${member.name} for deal "${deal.name}"`,
+                  type: 'warning',
+                  user_id: member._id
+                }).catch(err => console.error('Log creation failed:', err));
               }
             }
 
@@ -158,11 +164,21 @@ const checkDealExpiration = async () => {
 
           // Send SMS notification
           if (member.phone) {
-            await sendDealMessage.dealExpiration(member.phone, {
-              title: deal.name,
-              expiryDate: deal.dealEndsAt,
-              status: 'expired'
-            });
+            try {
+              await sendDealMessage.dealExpiration(member.phone, {
+                title: deal.name,
+                expiryDate: deal.dealEndsAt,
+                status: 'expired'
+              });
+            } catch (smsError) {
+              console.error(`Failed to send SMS notification to ${member.name}:`, smsError);
+              // Log SMS failure but continue execution
+              await Log.create({
+                message: `Failed to send SMS expiration notification to ${member.name} for deal "${deal.name}"`,
+                type: 'warning',
+                user_id: member._id
+              }).catch(err => console.error('Log creation failed:', err));
+            }
           }
 
           // Record the notification
@@ -196,7 +212,7 @@ const checkDealExpiration = async () => {
       await Log.create({
         message: `Deal "${deal.name}" automatically deactivated due to expiration`,
         type: 'info',
-        user_id: deal.distributor._id
+        user_id: deal.distributor ? deal.distributor._id : null
       });
     }
 

@@ -7,7 +7,11 @@ const commitmentSchema = new mongoose.Schema({
       size: { type: String, required: true },
       quantity: { type: Number, required: true },
       pricePerUnit: { type: Number, required: true },
-      totalPrice: { type: Number, required: true }
+      totalPrice: { type: Number, required: true },
+      appliedDiscountTier: {
+        tierQuantity: { type: Number, default: null },
+        tierDiscount: { type: Number, default: null }
+      }
     }],
     totalPrice: { type: Number, required: true },
     status: {
@@ -37,10 +41,6 @@ const commitmentSchema = new mongoose.Schema({
         type: String,
         enum: ['pending', 'paid', 'failed'],
         default: 'pending'
-    },
-    appliedDiscountTier: {
-      tierQuantity: { type: Number, default: null },
-      tierDiscount: { type: Number, default: null }
     }
   }, { timestamps: true });
   

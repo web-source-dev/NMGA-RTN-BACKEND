@@ -53,73 +53,80 @@ router.post("/buy/:dealId", async (req, res) => {
       }
     }
 
-    // Calculate total quantity and price across all sizes
-    let totalQuantity = 0;
-    let totalPrice = 0;
-    
-    const processedSizeCommitments = sizeCommitments.map(sizeCommit => {
-      const matchingSize = deal.sizes.find(s => s.size === sizeCommit.size);
-      const quantityForSize = Number(sizeCommit.quantity);
-      const pricePerUnit = Number(matchingSize.discountPrice);
-      const totalPriceForSize = quantityForSize * pricePerUnit;
-      
-      totalQuantity += quantityForSize;
-      totalPrice += totalPriceForSize;
-      
-      return {
-        size: sizeCommit.size,
-        quantity: quantityForSize,
-        pricePerUnit: pricePerUnit,
-        totalPrice: totalPriceForSize
-      };
-    });
-
-    // Find if discount tier applies based on total quantity of all commitments for this deal
-    let appliedDiscountTier = null;
-    
-    if (deal.discountTiers && deal.discountTiers.length > 0) {
-      // Get total quantity committed to this deal (including existing commitments)
+    // Get existing commitments for this deal to calculate size-specific totals
       const existingCommitments = await Commitment.find({
         dealId: dealId,
         status: { $ne: "cancelled" }
       });
       
-      const existingTotalQuantity = existingCommitments.reduce((sum, commitment) => {
-        // Add up quantities from sizeCommitments in each commitment
+    // Calculate total quantities per size across all commitments
+    const sizeTotals = {};
+    
+    // First, tally up quantities from existing commitments
+    existingCommitments.forEach(commitment => {
         if (commitment.sizeCommitments && Array.isArray(commitment.sizeCommitments)) {
-          return sum + commitment.sizeCommitments.reduce((sizeSum, sc) => sizeSum + sc.quantity, 0);
-        }
-        return sum;
-      }, 0);
+        commitment.sizeCommitments.forEach(sc => {
+          if (!sizeTotals[sc.size]) {
+            sizeTotals[sc.size] = 0;
+          }
+          sizeTotals[sc.size] += sc.quantity;
+        });
+      }
+    });
       
-      // Find the highest tier that would be reached with this new commitment
-      const projectedTotalQuantity = existingTotalQuantity + totalQuantity;
+    // Add the new commitment quantities
+    sizeCommitments.forEach(sc => {
+      if (!sizeTotals[sc.size]) {
+        sizeTotals[sc.size] = 0;
+      }
+      sizeTotals[sc.size] += sc.quantity;
+    });
+
+    // Process each size commitment with potential tier discounts
+    let totalPrice = 0;
+    const processedSizeCommitments = [];
+    
+    for (const sizeCommit of sizeCommitments) {
+      const matchingSize = deal.sizes.find(s => s.size === sizeCommit.size);
+      const quantityForSize = Number(sizeCommit.quantity);
+      let pricePerUnit = Number(matchingSize.discountPrice);
+      let appliedDiscountTier = null;
+      
+      // Check for size-specific discount tiers
+      if (matchingSize.discountTiers && matchingSize.discountTiers.length > 0) {
+        // Get total quantity for this specific size ACROSS ALL COMMITMENTS
+        // This implements the collective volume discount approach
+        const sizeTotal = sizeTotals[sizeCommit.size] || 0;
       
       // Sort tiers by quantity in descending order to find the highest applicable tier
-      const sortedTiers = [...deal.discountTiers].sort((a, b) => b.tierQuantity - a.tierQuantity);
+        const sortedTiers = [...matchingSize.discountTiers].sort((a, b) => b.tierQuantity - a.tierQuantity);
       
-      // Find highest applicable tier
+        // Find highest applicable tier for this size
       for (const tier of sortedTiers) {
-        if (projectedTotalQuantity >= tier.tierQuantity) {
+          if (sizeTotal >= tier.tierQuantity) {
+            // Apply tier discount based on collective total, not just this order
+            pricePerUnit = tier.tierDiscount;
           appliedDiscountTier = tier;
           break;
         }
       }
-      
-      // Apply discount if a tier is applicable
-      if (appliedDiscountTier) {
-        const discountRate = appliedDiscountTier.tierDiscount / 100;
-        
-        // Recalculate prices with the discount
-        totalPrice = 0;
-        processedSizeCommitments.forEach(sizeCommit => {
-          const originalTotal = sizeCommit.pricePerUnit * sizeCommit.quantity;
-          const discountedPrice = sizeCommit.pricePerUnit * (1 - discountRate);
-          sizeCommit.pricePerUnit = discountedPrice;
-          sizeCommit.totalPrice = discountedPrice * sizeCommit.quantity;
-          totalPrice += sizeCommit.totalPrice;
-        });
       }
+      
+      const totalPriceForSize = quantityForSize * pricePerUnit;
+      
+      processedSizeCommitments.push({
+        size: sizeCommit.size,
+        quantity: quantityForSize,
+        pricePerUnit: pricePerUnit,
+        originalPricePerUnit: Number(matchingSize.discountPrice),
+        totalPrice: totalPriceForSize,
+        appliedDiscountTier: appliedDiscountTier ? {
+          tierQuantity: appliedDiscountTier.tierQuantity,
+          tierDiscount: appliedDiscountTier.tierDiscount
+        } : null
+      });
+      
+      totalPrice += totalPriceForSize;
     }
 
     const distributor = await User.findById(deal.distributor);
@@ -145,7 +152,6 @@ router.post("/buy/:dealId", async (req, res) => {
       commitment.modifiedByDistributor = false;
       commitment.modifiedSizeCommitments = [];
       commitment.modifiedTotalPrice = null;
-      commitment.appliedDiscountTier = appliedDiscountTier;
       await commitment.save();
     } else {
       isNewCommitment = true;
@@ -154,8 +160,7 @@ router.post("/buy/:dealId", async (req, res) => {
         dealId: dealId,
         sizeCommitments: processedSizeCommitments,
         totalPrice,
-        status: "pending",
-        appliedDiscountTier
+        status: "pending"
       });
       deal.commitments.push(commitment._id);
       await deal.save();
@@ -195,12 +200,9 @@ router.post("/buy/:dealId", async (req, res) => {
         pricePerUnit: sc.pricePerUnit,
         totalPrice: sc.totalPrice
       })),
-      quantity: totalQuantity,
+      quantity: processedSizeCommitments.reduce((total, sc) => total + sc.quantity, 0),
       totalPrice: totalPrice,
-      dealName: deal.name,
-      discountTierApplied: appliedDiscountTier ? 
-        `${appliedDiscountTier.tierDiscount}% at ${appliedDiscountTier.tierQuantity}+ units` : 
-        null
+      dealName: deal.name
     });
 
     // Recalculate summary totals
@@ -210,14 +212,197 @@ router.post("/buy/:dealId", async (req, res) => {
     
     await summary.save();
 
-    // Generate size details message for notifications
-    const sizeDetailsMessage = processedSizeCommitments.map(sc => 
-      `${sc.size}: ${sc.quantity} units at $${sc.pricePerUnit.toFixed(2)} each`
-    ).join(', ');
+    // IMPLEMENT COLLECTIVE VOLUME DISCOUNTS:
+    // After a new commitment is saved or updated, check if any discount tiers were affected
+    // and update ALL commitments for the deal to apply the correct discount tier
 
-    const discountMessage = appliedDiscountTier ? 
-      ` with ${appliedDiscountTier.tierDiscount}% discount (Tier: ${appliedDiscountTier.tierQuantity}+ units)` : 
-      '';
+    // Check if any discount tiers were activated or deactivated
+    const sizesWithDiscountTiers = deal.sizes.filter(size => 
+      size.discountTiers && size.discountTiers.length > 0
+    );
+
+    // Only proceed if this deal has sizes with discount tiers
+    if (sizesWithDiscountTiers.length > 0) {
+      // Get all active commitments for this deal (excluding cancelled ones)
+      const allCommitments = await Commitment.find({
+        dealId: dealId,
+        status: { $ne: "cancelled" }
+      });
+      
+      // Track which sizes need updates due to tier changes (activated or deactivated)
+      const sizesNeedingUpdate = [];
+      
+      // For each size with discount tiers, check if any tiers were activated or deactivated
+      for (const size of sizesWithDiscountTiers) {
+        // Calculate total quantity for this size across all commitments
+        const totalQuantityForSize = allCommitments.reduce((total, c) => {
+          const sizeCommit = c.sizeCommitments.find(sc => sc.size === size.size);
+          return total + (sizeCommit ? sizeCommit.quantity : 0);
+        }, 0);
+        
+        // Sort tiers by quantity in descending order to find the highest applicable tier
+        const sortedTiers = [...size.discountTiers].sort((a, b) => b.tierQuantity - a.tierQuantity);
+        
+        // Find highest applicable tier for this size
+        let highestApplicableTier = null;
+        for (const tier of sortedTiers) {
+          if (totalQuantityForSize >= tier.tierQuantity) {
+            highestApplicableTier = tier;
+            break;
+          }
+        }
+        
+        // Add to sizes needing update with the appropriate tier (or null if no tier applies anymore)
+        sizesNeedingUpdate.push({
+          size: size.size,
+          tier: highestApplicableTier,
+          originalPrice: size.discountPrice,
+          totalQuantity: totalQuantityForSize
+        });
+      }
+      
+      // If any sizes need updating due to tier changes
+      if (sizesNeedingUpdate.length > 0) {
+        // Update all commitments with the correct tier pricing
+        for (const commitmentToUpdate of allCommitments) {
+          let commitmentUpdated = false;
+          let updatedTotalPrice = 0;
+          
+          // Update each size commitment with the correct tier pricing
+          for (const sizeCommit of commitmentToUpdate.sizeCommitments) {
+            // Find this size in the update list
+            const sizeUpdate = sizesNeedingUpdate.find(su => su.size === sizeCommit.size);
+            
+            if (sizeUpdate) {
+              // If a tier applies, use its discount price
+              if (sizeUpdate.tier) {
+                // Only mark as updated if the price is changing
+                if (sizeCommit.pricePerUnit !== sizeUpdate.tier.tierDiscount) {
+                  sizeCommit.pricePerUnit = sizeUpdate.tier.tierDiscount;
+                  sizeCommit.appliedDiscountTier = {
+                    tierQuantity: sizeUpdate.tier.tierQuantity,
+                    tierDiscount: sizeUpdate.tier.tierDiscount
+                  };
+                  commitmentUpdated = true;
+                }
+              } else {
+                // No tier applies anymore, revert to original price
+                // Only mark as updated if the price is changing
+                if (sizeCommit.pricePerUnit !== sizeUpdate.originalPrice) {
+                  sizeCommit.pricePerUnit = sizeUpdate.originalPrice;
+                  sizeCommit.appliedDiscountTier = null;
+                  commitmentUpdated = true;
+                }
+              }
+              
+              // Recalculate total price for this size
+              sizeCommit.totalPrice = sizeCommit.quantity * sizeCommit.pricePerUnit;
+            }
+            
+            updatedTotalPrice += sizeCommit.totalPrice;
+          }
+          
+          // Save the updated commitment if changes were made
+          if (commitmentUpdated) {
+            commitmentToUpdate.totalPrice = updatedTotalPrice;
+            await commitmentToUpdate.save();
+            
+            // Only notify if this isn't the commitment we just created/updated
+            if (commitmentToUpdate._id.toString() !== commitment._id.toString()) {
+              // Notify user of the tier change (activation or deactivation)
+              const activatedTiers = sizesNeedingUpdate.filter(su => su.tier !== null);
+              const deactivatedTiers = sizesNeedingUpdate.filter(su => su.tier === null && su.totalQuantity > 0);
+              
+              let notificationTitle = "";
+              let notificationMessage = "";
+              
+              if (activatedTiers.length > 0 && deactivatedTiers.length > 0) {
+                notificationTitle = 'Volume Discount Tiers Updated';
+                notificationMessage = `Deal "${deal.name}" has had discount tier changes. Some sizes reached new tiers, others dropped below tier thresholds.`;
+              } else if (activatedTiers.length > 0) {
+                notificationTitle = 'Volume Discount Tier Reached';
+                notificationMessage = `A volume discount tier has been reached for deal "${deal.name}" - Your commitment has been automatically updated with better pricing!`;
+              } else if (deactivatedTiers.length > 0) {
+                notificationTitle = 'Volume Discount Tier Lost';
+                notificationMessage = `The collective quantity for deal "${deal.name}" has dropped below a discount tier threshold - Your price has been adjusted accordingly.`;
+              }
+              
+              await createNotification({
+                recipientId: commitmentToUpdate.userId,
+                senderId: null,
+                type: 'discount',
+                subType: 'tier_changed',
+                title: notificationTitle,
+                message: notificationMessage,
+                relatedId: commitmentToUpdate._id,
+                onModel: 'Commitment',
+                priority: 'medium'
+              });
+            }
+          }
+        }
+        
+        // Notify the distributor about tier changes
+        const activatedTiers = sizesNeedingUpdate.filter(su => su.tier !== null);
+        const deactivatedTiers = sizesNeedingUpdate.filter(su => su.tier === null && su.totalQuantity > 0);
+        
+        if (activatedTiers.length > 0 || deactivatedTiers.length > 0) {
+          let notificationTitle = '';
+          let notificationMessage = '';
+          
+          if (activatedTiers.length > 0 && deactivatedTiers.length > 0) {
+            notificationTitle = 'Volume Discount Tiers Changed';
+            
+            const activatedDetails = activatedTiers.map(su => 
+              `${su.size} reached ${su.tier.tierQuantity}+ units (price: $${su.tier.tierDiscount})`
+            ).join(', ');
+            
+            const deactivatedDetails = deactivatedTiers.map(su => 
+              `${su.size} dropped below tier threshold (now: ${su.totalQuantity} units)`
+            ).join(', ');
+            
+            notificationMessage = `Your deal "${deal.name}" has tier changes. Activated: ${activatedDetails}. Deactivated: ${deactivatedDetails}`;
+          } else if (activatedTiers.length > 0) {
+            notificationTitle = 'Volume Discount Tier Reached';
+            
+            const sizesDetails = activatedTiers.map(su => 
+              `${su.size} reached ${su.tier.tierQuantity}+ units (price: $${su.tier.tierDiscount})`
+            ).join(', ');
+            
+            notificationMessage = `Your deal "${deal.name}" has reached volume discount tiers for: ${sizesDetails}`;
+          } else if (deactivatedTiers.length > 0) {
+            notificationTitle = 'Volume Discount Tier Lost';
+            
+            const sizesDetails = deactivatedTiers.map(su => 
+              `${su.size} dropped below tier threshold (now: ${su.totalQuantity} units)`
+            ).join(', ');
+            
+            notificationMessage = `Your deal "${deal.name}" has lost volume discount tiers for: ${sizesDetails}`;
+          }
+          
+          await createNotification({
+            recipientId: deal.distributor,
+            senderId: null,
+            type: 'discount',
+            subType: 'tier_changed',
+            title: notificationTitle,
+            message: notificationMessage,
+            relatedId: deal._id,
+            onModel: 'Deal',
+            priority: 'medium'
+          });
+        }
+      }
+    }
+
+    // Generate size details message for notifications
+    const sizeDetailsMessage = processedSizeCommitments.map(sc => {
+      const tierInfo = sc.appliedDiscountTier 
+        ? ` (with tier discount at ${sc.appliedDiscountTier.tierQuantity}+ units)` 
+        : '';
+      
+      return `${sc.size}: ${sc.quantity} units at $${sc.pricePerUnit.toFixed(2)} each${tierInfo}`;
+    }).join(', ');
 
     await createNotification({
       recipientId: deal.distributor,
@@ -225,7 +410,7 @@ router.post("/buy/:dealId", async (req, res) => {
       type: 'commitment',
       subType: 'commitment_created',
       title: 'New Deal Commitment',
-      message: `${user.name} has committed to your deal "${deal.name}" - Total: ${totalQuantity} units, $${totalPrice.toFixed(2)}${discountMessage}. Size details: ${sizeDetailsMessage}`,
+      message: `${user.name} has committed to your deal "${deal.name}" - Total: ${processedSizeCommitments.reduce((total, sc) => total + sc.quantity, 0)} units, $${totalPrice.toFixed(2)}. Size details: ${sizeDetailsMessage}`,
       relatedId: commitment._id,
       onModel: 'Commitment',
       priority: 'high'
@@ -235,7 +420,7 @@ router.post("/buy/:dealId", async (req, res) => {
       type: 'commitment',
       subType: 'commitment_created',
       title: 'New Deal Commitment',
-      message: `${user.name} has committed to deal "${deal.name}" by distributor ${distributor.name} - Total: ${totalQuantity} units${discountMessage}`,
+      message: `${user.name} has committed to deal "${deal.name}" by distributor ${distributor.name} - Total: ${processedSizeCommitments.reduce((total, sc) => total + sc.quantity, 0)} units`,
       relatedId: commitment._id,
       onModel: 'Commitment',
       priority: 'medium'
