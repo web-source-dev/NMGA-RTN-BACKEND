@@ -5,8 +5,8 @@ module.exports = (name, renewalDetails) => baseTemplate(`
     <h2>Subscription Renewal Notice</h2>
     <p>Dear ${name},</p>
 
-    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;">
-        <h3>Renewal Information:</h3>
+    <div class="card">
+        <h3 class="card-header">Renewal Information:</h3>
         <ul>
             <li>Renewal Date: ${renewalDetails.renewalDate}</li>
             <li>Subscription Plan: ${renewalDetails.plan}</li>
@@ -14,15 +14,17 @@ module.exports = (name, renewalDetails) => baseTemplate(`
         </ul>
     </div>
 
-    <p>Your NMGA membership benefits include:</p>
-    <ul>
-        <li>Access to exclusive group deals</li>
-        <li>Bulk purchasing opportunities</li>
-        <li>Network with other members</li>
-        <li>Premium support services</li>
-    </ul>
+    <div class="alert-box alert-info">
+        <p><strong>Your NMGA membership benefits include:</strong></p>
+        <ul>
+            <li>Access to exclusive group deals</li>
+            <li>Bulk purchasing opportunities</li>
+            <li>Network with other members</li>
+            <li>Premium support services</li>
+        </ul>
+    </div>
 
-    <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 15px 0;">
+    <div class="alert-box alert-warning">
         <p style="margin: 0;">
             <strong>Note:</strong> To ensure uninterrupted service, please ensure your payment method is up to date.
         </p>

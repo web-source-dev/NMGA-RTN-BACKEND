@@ -7,7 +7,7 @@ module.exports = (name) => baseTemplate(`
 
     <p>Thank you for joining our community. Your account has been successfully created.</p>
 
-    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;">
+    <div class="alert-box alert-info">
         <h3>Getting Started:</h3>
         <ol>
             <li>Complete your profile</li>
@@ -19,7 +19,7 @@ module.exports = (name) => baseTemplate(`
 
     <p>Ready to explore?</p>
     <div style="text-align: center; margin: 30px 0;">
-        <a href="${FRONTEND_URL}/dashboard" class="button">Go to Dashboard</a>
+        <a href="${FRONTEND_URL}/dashboard/co-op-member" class="button">Go to Dashboard</a>
     </div>
 
     <p>Need help? Our support team is always here to assist you.</p>

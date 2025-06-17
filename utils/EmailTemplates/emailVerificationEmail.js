@@ -10,7 +10,7 @@ module.exports = (name, verificationLink) => baseTemplate(`
         <a href="${verificationLink}" class="button">Verify Email Address</a>
     </div>
 
-    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;">
+    <div class="alert-box alert-info">
         <p><strong>Why verify?</strong></p>
         <ul>
             <li>Ensure secure account access</li>

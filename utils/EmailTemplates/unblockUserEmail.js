@@ -5,8 +5,8 @@ module.exports = (name) => baseTemplate(`
     <h2>Account Access Restored</h2>
     <p>Dear ${name},</p>
 
-    <div style="background-color: #d4edda; padding: 15px; border-radius: 5px; margin: 15px 0;">
-        <p style="color: #155724; margin: 0;">
+    <div class="alert-box alert-success">
+        <p style="margin: 0;">
             <strong>Good News!</strong> Your account has been successfully unblocked.
         </p>
     </div>
@@ -19,7 +19,7 @@ module.exports = (name) => baseTemplate(`
         <li>View your commitments</li>
     </ul>
 
-    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;">
+    <div class="alert-box alert-info">
         <p><strong>Security Recommendations:</strong></p>
         <ul>
             <li>Update your password</li>
@@ -28,5 +28,7 @@ module.exports = (name) => baseTemplate(`
         </ul>
     </div>
 
-    <a href="${FRONTEND_URL}/login" class="button">Login Now</a>
+    <div style="text-align: center; margin-top: 20px;">
+        <a href="${FRONTEND_URL}/login" class="button">Login Now</a>
+    </div>
 `);

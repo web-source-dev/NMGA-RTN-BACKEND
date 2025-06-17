@@ -5,8 +5,8 @@ module.exports = (name) => baseTemplate(`
     <h2>Account Access Suspended</h2>
     <p>Dear ${name},</p>
 
-    <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 15px 0;">
-        <p style="color: #856404; margin: 0;">
+    <div class="alert-box alert-warning">
+        <p style="margin: 0;">
             <strong>Important Notice:</strong> Your account has been temporarily blocked.
         </p>
     </div>
@@ -26,5 +26,7 @@ module.exports = (name) => baseTemplate(`
         <li>Review and address any violations</li>
     </ol>
 
-    <a href="${FRONTEND_URL}/support" class="button">Contact Support</a>
+    <div style="text-align: center;">
+        <a href="${FRONTEND_URL}/support" class="button">Contact Support</a>
+    </div>
 `);

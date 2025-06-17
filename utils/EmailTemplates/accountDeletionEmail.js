@@ -6,7 +6,7 @@ module.exports = (name) => baseTemplate(`
 
     <p>We're sorry to see you go. Your account has been successfully deleted from our system.</p>
 
-    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;">
+    <div class="alert-box alert-info">
         <h3>What This Means:</h3>
         <ul>
             <li>All your personal data has been removed</li>

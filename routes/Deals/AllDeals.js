@@ -458,9 +458,6 @@ router.post('/bulk-decline-commitments', async (req, res) => {
             }
         );
 
-        // Send email notifications to all users
-        const sendEmail = require('../../utils/email');
-        const CommitmentNotificationTemplate = require('../../utils/EmailTemplates/CommitmentNotificationTemplate');
 
         for (const commitment of pendingCommitments) {
             const userName = commitment.userId.businessName || commitment.userId.name;

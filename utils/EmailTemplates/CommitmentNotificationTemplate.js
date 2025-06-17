@@ -28,22 +28,28 @@ const CommitmentNotificationTemplate = {
       <p>Dear ${userName},</p>
       <p>Your commitment to the deal <strong>${dealName}</strong> has been successfully recorded.</p>
       
-      <h3>Commitment Details:</h3>
-      <ul>
-        <li>Deal: ${dealName}</li>
-        ${quantityHtml}
-        <li>Total Price: $${totalPrice.toLocaleString()}</li>
-        <li>Status: Pending</li>
-      </ul>
+      <div class="card">
+        <h3 class="card-header">Commitment Details:</h3>
+        <ul>
+          <li>Deal: ${dealName}</li>
+          ${quantityHtml}
+          <li>Total Price: $${totalPrice.toLocaleString()}</li>
+          <li>Status: Pending</li>
+        </ul>
+      </div>
 
-      <p>What happens next?</p>
-      <ul>
-        <li>The distributor will review your commitment</li>
-        <li>You'll receive an email when the status changes</li>
-        <li>You can track your commitment status in your dashboard</li>
-      </ul>
+      <div class="alert-box alert-info">
+        <p><strong>What happens next?</strong></p>
+        <ul>
+          <li>The distributor will review your commitment</li>
+          <li>You'll receive an email when the status changes</li>
+          <li>You can track your commitment status in your dashboard</li>
+        </ul>
+      </div>
 
-      <a href="${FRONTEND_URL}/dashboard" class="button">View Your Commitments</a>
+      <div style="text-align: center;">
+        <a href="${FRONTEND_URL}/dashboard/co-op-member/commitments" class="button">View Your Commitments</a>
+      </div>
     `);
   },
 
@@ -73,23 +79,29 @@ const CommitmentNotificationTemplate = {
       <p>Hello,</p>
       <p>You have received a new commitment for your deal <strong>${dealName}</strong>.</p>
 
-      <h3>Commitment Details:</h3>
-      <ul>
-        <li>Member: ${userName}</li>
-        <li>Deal: ${dealName}</li>
-        ${quantityHtml}
-        <li>Total Price: $${totalPrice.toLocaleString()}</li>
-        <li>Status: Pending Review</li>
-      </ul>
+      <div class="card">
+        <h3 class="card-header">Commitment Details:</h3>
+        <ul>
+          <li>Member: ${userName}</li>
+          <li>Deal: ${dealName}</li>
+          ${quantityHtml}
+          <li>Total Price: $${totalPrice.toLocaleString()}</li>
+          <li>Status: Pending Review</li>
+        </ul>
+      </div>
 
-      <p>Required Actions:</p>
-      <ul>
-        <li>Review the commitment details</li>
-        <li>Approve or modify the commitment</li>
-        <li>Provide any necessary feedback</li>
-      </ul>
+      <div class="alert-box alert-info">
+        <p><strong>Required Actions:</strong></p>
+        <ul>
+          <li>Review the commitment details</li>
+          <li>Approve or modify the commitment</li>
+          <li>Provide any necessary feedback</li>
+        </ul>
+      </div>
 
-      <a href="${FRONTEND_URL}/dashboard" class="button">Review Commitment</a>
+      <div style="text-align: center;">
+        <a href="${FRONTEND_URL}/dashboard/co-op-member/commitments" class="button">Review Commitment</a>
+      </div>
     `);
   },
   
@@ -113,25 +125,33 @@ const CommitmentNotificationTemplate = {
       // For regular commitments
       quantityHtml = `<li>Quantity: ${quantity}</li>`;
     }
+
+    const statusClassName = status === 'approved' ? 'alert-success' : 'alert-warning';
     
     return baseTemplate(`
       <h2>Commitment Status Update</h2>
       <p>Dear ${userName},</p>
       <p>The status of your commitment for the deal <strong>${dealName}</strong> has been updated.</p>
       
-      <h3>Commitment Details:</h3>
-      <ul>
-        <li>Deal: ${dealName}</li>
-        ${quantityHtml}
-        <li>Total Price: $${totalPrice.toLocaleString()}</li>
-        <li>Status: <strong>${status.charAt(0).toUpperCase() + status.slice(1)}</strong></li>
-      </ul>
+      <div class="card">
+        <h3 class="card-header">Commitment Details:</h3>
+        <ul>
+          <li>Deal: ${dealName}</li>
+          ${quantityHtml}
+          <li>Total Price: $${totalPrice.toLocaleString()}</li>
+          <li>Status: <strong>${status.charAt(0).toUpperCase() + status.slice(1)}</strong></li>
+        </ul>
+      </div>
 
-      <p>${status === 'approved' 
-        ? 'Your commitment has been approved by the distributor. You will be contacted with further instructions regarding payment and delivery.' 
-        : 'Unfortunately, your commitment has been declined by the distributor. Please check your dashboard for more information or contact the distributor directly if you have any questions.'}</p>
+      <div class="alert-box ${statusClassName}">
+        <p>${status === 'approved' 
+          ? 'Your commitment has been approved by the distributor. You will be contacted with further instructions regarding payment and delivery.' 
+          : 'Unfortunately, your commitment has been declined by the distributor. Please check your dashboard for more information or contact the distributor directly if you have any questions.'}</p>
+      </div>
 
-      <a href="${FRONTEND_URL}/dashboard" class="button">View Your Commitments</a>
+      <div style="text-align: center;">
+        <a href="${FRONTEND_URL}/dashboard/co-op-member/commitments" class="button">View Your Commitments</a>
+      </div>
     `);
   }
 };

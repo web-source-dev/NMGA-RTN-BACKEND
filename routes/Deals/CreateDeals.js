@@ -1,15 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const mongoose = require('mongoose');
 const Deal = require('../../models/Deals');
 const User = require('../../models/User');
 const Log = require('../../models/Logs');
 const sendEmail = require('../../utils/email');
-const fs = require('fs');
-const path = require('path');
 const newDealTemplate = require('../../utils/EmailTemplates/NewDealTemplate');
 const { sendDealMessage } = require('../../utils/message');
-const { createNotification, notifyUsersByRole } = require('../Common/Notification');
+const { notifyUsersByRole } = require('../Common/Notification');
 const { broadcastDealUpdate } = require('../../utils/dealUpdates');
 
 // Create a new deal
@@ -194,21 +191,37 @@ router.post('/create', async (req, res) => {
     const members = await User.find({ 
         role: 'member',
         isBlocked: false,
-        phone: { $exists: true, $ne: '' }
+        email: { $exists: true, $ne: '' }
     }).select('name phone email').lean();
 
-    // Send notifications to all members
+    // Send notifications to all members (SMS and Email)
     for (const member of members) {
         try {
-            const dealInfo = {
-                dealName: newDeal.name,
-                distributorName: user.name,
-                price: `${avgDiscountPrice.toFixed(2)} (avg)`,
-                expiryDate: newDeal.dealEndsAt,
-                minQuantity: newDeal.minQtyForDiscount,
-                sizeOptions: sizes.length
-            };
-            await sendDealMessage.newDeal(member.phone, dealInfo);
+            // Send email notification
+            if (member.email) {
+                const emailSubject = `New Deal: ${newDeal.name} by ${user.name}`;
+                const emailContent = newDealTemplate(
+                    newDeal.name, 
+                    user.name, 
+                    member.name, 
+                    newDeal._id
+                );
+                await sendEmail(member.email, emailSubject, emailContent);
+                console.log(`Email sent to ${member.name} at ${member.email}`);
+            }
+
+            // Send SMS notification if phone number exists
+            if (member.phone) {
+                const dealInfo = {
+                    dealName: newDeal.name,
+                    distributorName: user.name,
+                    price: `${avgDiscountPrice.toFixed(2)} (avg)`,
+                    expiryDate: newDeal.dealEndsAt,
+                    minQuantity: newDeal.minQtyForDiscount,
+                    sizeOptions: sizes.length
+                };
+                await sendDealMessage.newDeal(member.phone, dealInfo);
+            }
         } catch (error) {
             console.error(`Failed to send deal notification to ${member.name}:`, error);
         }

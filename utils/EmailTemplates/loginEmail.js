@@ -13,14 +13,21 @@ module.exports = (data) => {
   }
 
   return baseTemplate(`
-    <h1>New Login Detected</h1>
+    <h2>New Login Detected</h2>
     <p>Hello ${name || 'User'},</p>
-    <p>We detected a new login to your account with the following details:</p>
-    <ul>
-      <li>Time: ${time}</li>
-      <li>Location: ${location}</li>
-      <li>Device: ${device}</li>
-    </ul>
-    <p>If this wasn't you, please secure your account immediately.</p>
+    
+    <div class="alert-box alert-warning">
+      <p><strong>Security Alert:</strong> We detected a new login to your account.</p>
+    </div>
+    
+    <div class="card">
+      <h3 class="card-header">Login Details:</h3>
+      <ul>
+        <li>Time: ${time}</li>
+        <li>Location: ${location}</li>
+        <li>Device: ${device}</li>
+      </ul>
+    </div>
+    
   `);
 };

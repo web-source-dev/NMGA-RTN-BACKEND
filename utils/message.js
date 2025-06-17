@@ -133,6 +133,10 @@ const sendDealMessage = {
         return await sendSMS(phone, message);
     }),
 
+    genericMessage: withErrorHandling(async (phone, message) => {
+        return await sendSMS(phone, message);
+    }),
+
     commitmentUpdate: withErrorHandling(async (phone, commitmentInfo) => {
         const message = DealMessages.commitmentStatusUpdate(
             commitmentInfo.dealName, 

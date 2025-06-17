@@ -8,7 +8,7 @@ module.exports = (name, dealName) => baseTemplate(`
     <p>We hope you're enjoying your experience with NMGA. Your feedback is crucial in helping us improve our services.</p>
 
     ${dealName ? `
-    <div style="background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;">
+    <div class="alert-box alert-info">
         <h3>Recent Deal Activity:</h3>
         <p>We noticed you recently participated in: <strong>${dealName}</strong></p>
     </div>
