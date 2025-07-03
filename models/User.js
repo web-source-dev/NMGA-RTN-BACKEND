@@ -18,6 +18,9 @@ const userSchema = new mongoose.Schema({
   phone: {
     type: String,
   },
+  fax:{
+    type: String,
+  },
   additionalEmails: [{
     email: {
       type: String,

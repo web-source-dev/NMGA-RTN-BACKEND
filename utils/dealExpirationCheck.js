@@ -9,6 +9,8 @@ const mongoose = require('mongoose');
 
 const { FRONTEND_URL } = process.env;
 
+// Maximum number of deals to include in a single email
+const MAX_DEALS_PER_EMAIL = 5;
 
 const checkDealExpiration = async () => {
   try {
@@ -99,17 +101,26 @@ const checkDealExpiration = async () => {
 
         try {
           const timeRemaining = interval.label;
+          const totalDeals = deals.length;
           
-          // Send batch email notification
+          // Only send the first MAX_DEALS_PER_EMAIL deals in the email
+          const dealsToShow = deals.slice(0, MAX_DEALS_PER_EMAIL);
+          const hasMoreDeals = deals.length > MAX_DEALS_PER_EMAIL;
+          
+          // Create email subject
+          const emailSubject = hasMoreDeals ?
+            `Deals Ending in ${timeRemaining}` :
+            ` Deal Ending in ${timeRemaining}`;
+            
+          // Send email notification with just the first MAX_DEALS_PER_EMAIL deals
           await sendEmail(
             user.email,
-            `${deals.length} Deal${deals.length > 1 ? 's' : ''} Ending in ${timeRemaining}!`,
-            DealsBatchExpirationTemplate(user.name, deals, timeRemaining)
+            emailSubject,
+            DealsBatchExpirationTemplate(user.name, dealsToShow, timeRemaining)
           );
-
-          // Record successful notifications for each deal
+          
+          // Record successful notifications for ALL deals (even ones not shown in the email)
           for (const deal of deals) {
-            // No need to get the deal again as we didn't use lean()
             if (!deal.notificationHistory.has(notificationKey)) {
               deal.notificationHistory.set(notificationKey, []);
             }
@@ -119,10 +130,15 @@ const checkDealExpiration = async () => {
               sentAt: new Date()
             });
             
-            // Save each deal's updated notification history
             await deal.save();
           }
-
+          
+          await Log.create({
+            message: `${timeRemaining} expiration notification sent to ${user.name} for ${totalDeals} deal(s) ${hasMoreDeals ? `(showing ${dealsToShow.length})` : ''}`,
+            type: 'info',
+            user_id: user._id
+          });
+          
           // Send SMS if phone number exists (still sending individual SMS for better readability)
           if (user.phone) {
             // Send up to 3 SMS messages at most to avoid overwhelming the user
@@ -162,15 +178,9 @@ const checkDealExpiration = async () => {
             }
           }
 
-          await Log.create({
-            message: `${timeRemaining} expiration batch notification sent to ${user.name} for ${deals.length} deal(s)`,
-            type: 'info',
-            user_id: user._id
-          });
-
         } catch (error) {
           await Log.create({
-            message: `Failed to send ${interval.label} batch expiration notification to ${user.email} for ${deals.length} deal(s)`,
+            message: `Failed to send ${interval.label} batch expiration notification to ${user.email} for deals`,
             type: 'error',
             user_id: user._id
           });
@@ -179,18 +189,13 @@ const checkDealExpiration = async () => {
       }
     }
 
-    // Handle expired deals
+    // Handle expired deals - only update status without sending notifications
     const expiredDeals = await Deal.find({
       dealEndsAt: { $lt: currentDate },
       status: 'active'
-    })
-    .populate('distributor')
-    .populate('commitments');
+    });
 
     if (expiredDeals.length > 0) {
-      // Group expired deals by users who need to be notified
-      const expiredUserDealsMap = new Map();
-      
       for (const deal of expiredDeals) {
         // Update deal status
         deal.status = 'inactive';
@@ -202,95 +207,6 @@ const checkDealExpiration = async () => {
           type: 'info',
           user_id: deal.distributor ? deal.distributor._id : null
         });
-        
-        const notifiedUsers = deal.notificationHistory && deal.notificationHistory.get ? 
-          deal.notificationHistory.get('notification_expired') || [] : 
-          [];
-          
-        const notifiedUserIds = notifiedUsers.map(n => n.userId.toString());
-        
-        members.forEach(user => {
-          if (!notifiedUserIds.includes(user._id.toString())) {
-            if (!expiredUserDealsMap.has(user._id.toString())) {
-              expiredUserDealsMap.set(user._id.toString(), { user, deals: [] });
-            }
-            expiredUserDealsMap.get(user._id.toString()).deals.push(deal);
-          }
-        });
-      }
-
-      // Send batch notifications for expired deals
-      for (const [userId, { user, deals }] of expiredUserDealsMap.entries()) {
-        if (deals.length === 0) continue;
-
-        try {
-          // Send batch email notification for expired deals
-          await sendEmail(
-            user.email,
-            `${deals.length} Deal${deals.length > 1 ? 's have' : ' has'} Expired`,
-            DealsBatchExpirationTemplate(user.name, deals, 'expired')
-          );
-
-          // Send SMS notification (limited to first 3 deals)
-          if (user.phone) {
-            const dealsToSendSMS = deals.slice(0, 3);
-            for (const deal of dealsToSendSMS) {
-              try {
-                await sendDealMessage.dealExpiration(user.phone, {
-                  title: deal.name,
-                  expiryDate: deal.dealEndsAt,
-                  status: 'expired'
-                });
-              } catch (smsError) {
-                console.error(`Failed to send SMS notification to ${user.name}:`, smsError);
-                await Log.create({
-                  message: `Failed to send SMS expiration notification to ${user.name} for deal "${deal.name}"`,
-                  type: 'warning',
-                  user_id: user._id
-                }).catch(err => console.error('Log creation failed:', err));
-              }
-            }
-            
-            // Additional message if there are more than 3 expired deals
-            if (deals.length > 3) {
-              try {
-                await sendDealMessage.genericMessage(user.phone, 
-                  `And ${deals.length - 3} more deal${deals.length - 3 > 1 ? 's have' : ' has'} expired. Check your email for details.`
-                );
-              } catch (error) {
-                console.error(`Failed to send additional expired deals count SMS to ${user.name}:`, error);
-              }
-            }
-          }
-
-          // Record the notifications for each deal
-          for (const deal of deals) {
-            if (!deal.notificationHistory.has('notification_expired')) {
-              deal.notificationHistory.set('notification_expired', []);
-            }
-            
-            deal.notificationHistory.get('notification_expired').push({
-              userId: user._id,
-              sentAt: new Date()
-            });
-            
-            await deal.save();
-          }
-
-          await Log.create({
-            message: `Expiration batch notification sent to ${user.name} for ${deals.length} deal(s)`,
-            type: 'info',
-            user_id: user._id
-          });
-
-        } catch (error) {
-          console.error('Error sending expiration batch notification:', error);
-          await Log.create({
-            message: `Failed to send expiration batch notification to ${user.email} for ${deals.length} deal(s)`,
-            type: 'error',
-            user_id: user._id
-          });
-        }
       }
     }
 

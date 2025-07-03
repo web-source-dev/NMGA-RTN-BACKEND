@@ -47,28 +47,45 @@ router.get('/distributor-deals', async (req, res) => {
         // Date filters
         let dateQuery = {};
 
-        if (month) {
+        if (month && month !== '') {
+            // If month is specified, filter by that month
             const currentYear = new Date().getFullYear();
             const monthIndex = parseInt(month) - 1; // Convert to 0-based index
             const startOfMonth = new Date(currentYear, monthIndex, 1);
             const endOfMonth = new Date(currentYear, monthIndex + 1, 0, 23, 59, 59);
-            dateQuery = { createdAt: { $gte: startOfMonth, $lte: endOfMonth } };
-        } else if (startDate && endDate) {
-            dateQuery = {
-                createdAt: {
-                    $gte: new Date(startDate),
-                    $lte: new Date(endDate)
-                }
+            dateQuery = { 
+                $or: [
+                    // Deal created in this month
+                    { createdAt: { $gte: startOfMonth, $lte: endOfMonth } },
+                    // Deal ends in this month
+                    { dealEndsAt: { $gte: startOfMonth, $lte: endOfMonth } }
+                ]
             };
-        } else {
-            // Default to current month
-            const now = new Date();
-            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-            const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-            dateQuery = { createdAt: { $gte: startOfMonth, $lte: endOfMonth } };
+        } else if (startDate && endDate) {
+            // If date range is specified
+            const startDateObj = new Date(startDate);
+            const endDateObj = new Date(endDate);
+            endDateObj.setHours(23, 59, 59, 999); // Set to end of day
+            
+            dateQuery = {
+                $or: [
+                    // Deal created in date range
+                    { createdAt: { $gte: startDateObj, $lte: endDateObj } },
+                    // Deal ends in date range
+                    { dealEndsAt: { $gte: startDateObj, $lte: endDateObj } },
+                    // Deal spans the date range (starts before, ends after)
+                    {
+                        createdAt: { $lte: startDateObj },
+                        dealEndsAt: { $gte: endDateObj }
+                    }
+                ]
+            };
         }
-
-        query = { ...query, ...dateQuery };
+        
+        // Only apply date query if there are date filters
+        if (Object.keys(dateQuery).length > 0) {
+            query = { ...query, ...dateQuery };
+        }
 
         // Status filter
         if (status) {
@@ -90,7 +107,7 @@ router.get('/distributor-deals', async (req, res) => {
                     select: 'name email businessName'
                 }
             })
-            .sort({ createdAt: -1 })
+            .sort({ totalCommitments: -1, totalQuantity: -1, createdAt: -1 }) // Sort by commitment count, then quantity, then date
             .skip(skip)
             .limit(parseInt(limit));
 
@@ -122,6 +139,7 @@ router.get('/distributor-deals', async (req, res) => {
 
             const pendingTotalQuantity = calcTotalQuantity(pendingCommitments);
             const approvedTotalQuantity = calcTotalQuantity(approvedCommitments);
+            const totalCommitmentCount = commitments.length;
 
             return {
                 _id: deal._id,
@@ -139,7 +157,7 @@ router.get('/distributor-deals', async (req, res) => {
                 bulkAction: deal.bulkAction,
                 bulkStatus: deal.bulkStatus,
                 createdAt: deal.createdAt,
-                totalCommitments: commitments.length,
+                totalCommitments: totalCommitmentCount,
                 pendingCommitments: commitments.filter(c => c.status === 'pending').length,
                 approvedCommitments: commitments.filter(c => c.status === 'approved').length,
                 declinedCommitments: commitments.filter(c => c.status === 'declined').length,
@@ -150,7 +168,18 @@ router.get('/distributor-deals', async (req, res) => {
                 totalAmount: approvedCommitments.reduce((sum, c) => sum + c.totalPrice, 0)
             };
         }).filter(deal => deal !== null); // Remove null values
+        
+        // Sort by total commitments and quantity
+        dealsWithStats.sort((a, b) => {
+            // First sort by total commitments (descending)
+            if (b.totalCommitments !== a.totalCommitments) {
+                return b.totalCommitments - a.totalCommitments;
+            }
+            // Then by total quantity (descending)
+            return (b.totalQuantity + b.totalPQuantity) - (a.totalQuantity + a.totalPQuantity);
+        });
 
+        console.log("dealsWithStats" , dealsWithStats)
         res.json({
             success: true,
             deals: dealsWithStats,
@@ -208,28 +237,45 @@ router.get('/admin-all-deals', async (req, res) => {
         // Date filters
         let dateQuery = {};
 
-        if (month) {
+        if (month && month !== '') {
+            // If month is specified, filter by that month
             const currentYear = new Date().getFullYear();
             const monthIndex = parseInt(month) - 1; // Convert to 0-based index
             const startOfMonth = new Date(currentYear, monthIndex, 1);
             const endOfMonth = new Date(currentYear, monthIndex + 1, 0, 23, 59, 59);
-            dateQuery = { createdAt: { $gte: startOfMonth, $lte: endOfMonth } };
-        } else if (startDate && endDate) {
-            dateQuery = {
-                createdAt: {
-                    $gte: new Date(startDate),
-                    $lte: new Date(endDate)
-                }
+            dateQuery = { 
+                $or: [
+                    // Deal created in this month
+                    { createdAt: { $gte: startOfMonth, $lte: endOfMonth } },
+                    // Deal ends in this month
+                    { dealEndsAt: { $gte: startOfMonth, $lte: endOfMonth } }
+                ]
             };
-        } else {
-            // Default to current month
-            const now = new Date();
-            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-            const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-            dateQuery = { createdAt: { $gte: startOfMonth, $lte: endOfMonth } };
+        } else if (startDate && endDate) {
+            // If date range is specified
+            const startDateObj = new Date(startDate);
+            const endDateObj = new Date(endDate);
+            endDateObj.setHours(23, 59, 59, 999); // Set to end of day
+            
+            dateQuery = {
+                $or: [
+                    // Deal created in date range
+                    { createdAt: { $gte: startDateObj, $lte: endDateObj } },
+                    // Deal ends in date range
+                    { dealEndsAt: { $gte: startDateObj, $lte: endDateObj } },
+                    // Deal spans the date range (starts before, ends after)
+                    {
+                        createdAt: { $lte: startDateObj },
+                        dealEndsAt: { $gte: endDateObj }
+                    }
+                ]
+            };
         }
-
-        query = { ...query, ...dateQuery };
+        
+        // Only apply date query if there are date filters
+        if (Object.keys(dateQuery).length > 0) {
+            query = { ...query, ...dateQuery };
+        }
 
         // Status filter
         if (status) {
@@ -255,7 +301,7 @@ router.get('/admin-all-deals', async (req, res) => {
                 path: 'distributor',
                 select: 'name email businessName'
             })
-            .sort({ createdAt: -1 })
+            .sort({ totalCommitments: -1, totalQuantity: -1, createdAt: -1 }) // Sort by commitment count, then quantity, then date
             .skip(skip)
             .limit(parseInt(limit));
 
@@ -287,6 +333,7 @@ router.get('/admin-all-deals', async (req, res) => {
 
             const pendingTotalQuantity = calcTotalQuantity(pendingCommitments);
             const approvedTotalQuantity = calcTotalQuantity(approvedCommitments);
+            const totalCommitmentCount = commitments.length;
 
             return {
                 _id: deal._id,
@@ -305,7 +352,7 @@ router.get('/admin-all-deals', async (req, res) => {
                 bulkAction: deal.bulkAction,
                 bulkStatus: deal.bulkStatus,
                 createdAt: deal.createdAt,
-                totalCommitments: commitments.length,
+                totalCommitments: totalCommitmentCount,
                 pendingCommitments: commitments.filter(c => c.status === 'pending').length,
                 approvedCommitments: commitments.filter(c => c.status === 'approved').length,
                 declinedCommitments: commitments.filter(c => c.status === 'declined').length,
@@ -316,6 +363,18 @@ router.get('/admin-all-deals', async (req, res) => {
                 totalAmount: approvedCommitments.reduce((sum, c) => sum + c.totalPrice, 0)
             };
         }).filter(deal => deal !== null); // Remove null values
+        
+        // Sort by total commitments and quantity
+        dealsWithStats.sort((a, b) => {
+            // First sort by total commitments (descending)
+            if (b.totalCommitments !== a.totalCommitments) {
+                return b.totalCommitments - a.totalCommitments;
+            }
+            // Then by total quantity (descending)
+            return (b.totalQuantity + b.totalPQuantity) - (a.totalQuantity + a.totalPQuantity);
+        });
+        
+        console.log("dealsWithStats" , dealsWithStats)
 
         res.json({
             success: true,
