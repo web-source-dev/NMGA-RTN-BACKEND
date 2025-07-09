@@ -47,13 +47,13 @@ mongoose.connect(process.env.MONGODB_URI, {
   .then(() => {
     console.log('MongoDB connected successfully');
     // Start the deal expiration check after DB connection is established
-    checkDealExpiration();
+    // checkDealExpiration();
     
     // Initial backup with better error handling
    
     
     // Set up the intervals
-    setInterval(checkDealExpiration, 24 * 60 * 60 * 1000);
+    // setInterval(checkDealExpiration, 24 * 60 * 60 * 1000);
     setInterval(() => {
       backupToGoogleSheets()
         .catch(err => console.error('Scheduled backup failed:', err.message));
@@ -67,6 +67,7 @@ mongoose.connect(process.env.MONGODB_URI, {
   initializeScheduler();
 
 app.use('/auth', require('./routes/auth/auth'));
+app.use('/auth/add-user', require('./routes/auth/addUser')); // Ensure addUser route is registered
 app.use('/common', require('./routes/Common/common'));
 app.use('/deals', require('./routes/Deals/Deals'));
 app.use('/payments', require('./payments/payment'));

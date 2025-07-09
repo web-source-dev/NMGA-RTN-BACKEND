@@ -6,6 +6,52 @@ const sendEmail = require('../../utils/email');
 const InvitationEmail = require('../../utils/EmailTemplates/InvitationEmail');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const { importUsers } = require('../../importUsers');
+
+// Get all users
+router.get('/', async (req, res) => {
+    try {
+        const users = await User.find();
+        res.json(users);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Import users from Excel file
+router.post('/import-users', async (req, res) => {
+    try {
+        // Check if user is admin
+        const userRole = req.headers['user-role'];
+        if (userRole !== 'admin') {
+            return res.status(403).json({ success: false, message: 'Only administrators can import users' });
+        }
+        
+        // Call the import function
+        const result = await importUsers();
+        
+        // Return response
+        if (result.success) {
+            res.status(200).json({ 
+                success: true, 
+                message: 'Users imported successfully', 
+                stats: result.stats 
+            });
+        } else {
+            res.status(500).json({ 
+                success: false, 
+                message: 'Failed to import users', 
+                error: result.error 
+            });
+        }
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            message: 'Internal server error during import', 
+            error: error.message 
+        });
+    }
+});
 
 router.post('/add-user', async (req, res) => {
     const { name, email, role, businessName } = req.body;

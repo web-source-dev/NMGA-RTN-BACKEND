@@ -32,7 +32,10 @@ router.get('/:distributorId/members', async (req, res) => {
             }
             memberStats[commitment.userId._id].totalCommitments++;
             memberStats[commitment.userId._id].totalSpent += commitment.totalPrice;
-            memberStats[commitment.userId._id].quantity += commitment.quantity;
+            
+            // Calculate total quantity from all size commitments
+            const totalQuantity = commitment.sizeCommitments.reduce((sum, sizeCommit) => sum + sizeCommit.quantity, 0);
+            memberStats[commitment.userId._id].quantity += totalQuantity;
             
             // Track the most recent commitment
             if (!memberStats[commitment.userId._id].lastCommitment ||
@@ -120,7 +123,10 @@ router.get('/:distributorId/top-members', async (req, res) => {
             }
             memberStats[commitment.userId._id].totalCommitments++;
             memberStats[commitment.userId._id].totalSpent += commitment.totalPrice;
-            memberStats[commitment.userId._id].quantity += commitment.quantity;
+            
+            // Calculate total quantity from all size commitments
+            const totalQuantity = commitment.sizeCommitments.reduce((sum, sizeCommit) => sum + sizeCommit.quantity, 0);
+            memberStats[commitment.userId._id].quantity += totalQuantity;
         });
 
         // Convert to array and sort by total spent
