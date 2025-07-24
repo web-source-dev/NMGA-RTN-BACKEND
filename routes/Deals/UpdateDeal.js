@@ -97,6 +97,14 @@ router.put('/:dealId', async (req, res) => {
         [];
     }
 
+    // Ensure commitment dates are properly handled
+    if (updateData.commitmentStartAt) {
+      updateData.commitmentStartAt = new Date(updateData.commitmentStartAt);
+    }
+    if (updateData.commitmentEndsAt) {
+      updateData.commitmentEndsAt = new Date(updateData.commitmentEndsAt);
+    }
+
     // Use $set to ensure arrays are replaced rather than merged
     const deal = await Deal.findByIdAndUpdate(
       dealId,

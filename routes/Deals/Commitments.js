@@ -42,6 +42,30 @@ router.post("/buy/:dealId", async (req, res) => {
       });
     }
 
+    // Check if commitment period has ended
+    if (deal.commitmentEndsAt) {
+      const commitmentEndDate = new Date(deal.commitmentEndsAt);
+      const now = new Date();
+      if (now > commitmentEndDate) {
+        return res.status(400).json({
+          error: "Commitment period ended",
+          message: `The commitment period for this deal ended on ${commitmentEndDate.toLocaleDateString()}. You can no longer make commitments to this deal.`
+        });
+      }
+    }
+
+    // Check if commitment period has started (optional validation)
+    if (deal.commitmentStartAt) {
+      const commitmentStartDate = new Date(deal.commitmentStartAt);
+      const now = new Date();
+      if (now < commitmentStartDate) {
+        return res.status(400).json({
+          error: "Commitment period not started",
+          message: `The commitment period for this deal starts on ${commitmentStartDate.toLocaleDateString()}. You can make commitments during the active period.`
+        });
+      }
+    }
+
     // Validate that each size in the commitment exists in the deal
     for (const sizeCommit of sizeCommitments) {
       const matchingSize = deal.sizes.find(s => s.size === sizeCommit.size);

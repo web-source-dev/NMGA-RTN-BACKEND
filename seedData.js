@@ -125,11 +125,32 @@ const seedData = async () => {
     const categories = ['Vegetables', 'Fruits', 'Dairy', 'Meat', 'Bakery'];
     const sizeOptions = ['Small', 'Medium', 'Large', 'Extra Large'];
     
+    // Current date context for testing
+    const currentDate = new Date('2025-07-25'); // July 25, 2025
+    
     for (let i = 1; i <= 8; i++) {
       const distributor = i % 2 === 0 ? distributor1 : distributor2;
-      const dealStartAt = new Date();
-      const dealEndsAt = new Date();
-      dealEndsAt.setDate(dealEndsAt.getDate() + 14); // 2 weeks from now
+      
+      // Deal timeframe - full month of July 2025
+      const dealStartAt = new Date(2025, 6, 1); // July 1, 2025
+      const dealEndsAt = new Date(2025, 6, 31, 23, 59); // July 31, 2025, 11:59 PM
+      
+      // Commitment timeframe - vary between deals for testing
+      let commitmentStartAt, commitmentEndsAt;
+      
+      if (i <= 3) {
+        // First 3 deals: Commitment period has ended (before July 25)
+        commitmentStartAt = new Date(2025, 6, 1); // July 1, 2025
+        commitmentEndsAt = new Date(2025, 6, 15, 23, 59); // July 15, 2025, 11:59 PM
+      } else if (i <= 6) {
+        // Next 3 deals: Commitment period is active (July 25 is within the period)
+        commitmentStartAt = new Date(2025, 6, 20); // July 20, 2025
+        commitmentEndsAt = new Date(2025, 6, 30, 23, 59); // July 30, 2025, 11:59 PM
+      } else {
+        // Last 2 deals: Commitment period hasn't started yet (after July 25)
+        commitmentStartAt = new Date(2025, 6, 28); // July 28, 2025
+        commitmentEndsAt = new Date(2025, 6, 31, 23, 59); // July 31, 2025, 11:59 PM
+      }
       
       const sizes = [];
       const numSizes = Math.floor(Math.random() * 3) + 1; // 1 to 3 sizes
@@ -151,13 +172,15 @@ const seedData = async () => {
 
       const deal = await Deal.create({
         name: `Deal ${i}: ${categories[i % categories.length]} Special`,
-        description: `This is a special deal for ${categories[i % categories.length].toLowerCase()}.`,
+        description: `This is a special deal for ${categories[i % categories.length].toLowerCase()}. ${i <= 3 ? 'This deal has a commitment period that has ended.' : i <= 6 ? 'This deal has an active commitment period.' : 'This deal has a commitment period that hasn\'t started yet.'}`,
         sizes,
         distributor: distributor._id,
         category: categories[i % categories.length],
         status: 'active',
         dealStartAt,
         dealEndsAt,
+        commitmentStartAt,
+        commitmentEndsAt,
         minQtyForDiscount: 5,
         images: [`https://via.placeholder.com/300?text=Deal${i}`],
       });
@@ -166,13 +189,17 @@ const seedData = async () => {
 
     // Create commitments
     const commitments = [];
-    for (let i = 0; i < members.length; i++) {
-      // Each member commits to 1-3 deals
-      const numCommitments = Math.floor(Math.random() * 3) + 1;
+    
+    // Only create commitments for deals with active commitment periods (deals 4-6)
+    const activeDeals = deals.slice(3, 6); // Deals 4, 5, 6 have active commitment periods
+    
+    for (let i = 0; i < Math.min(members.length, 5); i++) { // Only first 5 members
+      // Each member commits to 1-2 active deals
+      const numCommitments = Math.floor(Math.random() * 2) + 1;
       
       for (let j = 0; j < numCommitments; j++) {
-        const dealIndex = (i + j) % deals.length;
-        const deal = deals[dealIndex];
+        const dealIndex = (i + j) % activeDeals.length;
+        const deal = activeDeals[dealIndex];
         
         // Select 1-2 sizes from the deal
         const sizeCommitments = [];
@@ -181,7 +208,7 @@ const seedData = async () => {
         
         for (let k = 0; k < numSizeCommitments; k++) {
           const dealSize = deal.sizes[k];
-          const quantity = Math.floor(Math.random() * 10) + 1; // 1 to 10
+          const quantity = Math.floor(Math.random() * 5) + 1; // 1 to 5 (smaller quantities for testing)
           let pricePerUnit = dealSize.discountPrice;
           
           // Apply tier discount if applicable
@@ -208,7 +235,8 @@ const seedData = async () => {
           });
         }
         
-        const status = ['pending', 'approved', 'declined', 'cancelled'][Math.floor(Math.random() * 2)]; // More weight to pending and approved
+        // Mostly pending status for testing
+        const status = Math.random() > 0.7 ? 'approved' : 'pending';
         
         const commitment = await Commitment.create({
           userId: members[i]._id,
@@ -434,13 +462,22 @@ Created:
 - 1 Admin (email: admin@example.com)
 - 2 Distributors (emails: distributor1@example.com, distributor2@example.com)
 - 10 Members (emails: member1@example.com through member10@example.com)
-- 8 Deals (with various sizes and discount tiers)
-- Multiple Commitments (linking members to deals)
+- 8 Deals with commitment periods:
+  * Deals 1-3: Commitment period ended (July 1-15, 2025) - Members cannot commit
+  * Deals 4-6: Active commitment period (July 20-30, 2025) - Members can commit
+  * Deals 7-8: Commitment period not started (July 28-31, 2025) - Members cannot commit yet
+- Commitments only for active deals (deals 4-6) with smaller quantities for testing
 - Compare data for 3 deals
 - 5 Announcements
 - 5 Contact requests
 - 3 Splash pages (with various cards and settings)
 - 3 Suppliers (assigned to members)
+
+Testing Context:
+- Current date: July 25, 2025
+- All deals have full July 2025 timeframe (July 1-31)
+- Commitment periods vary to test different states
+- Only deals 4-6 have commitments (active period)
 
 All passwords are set to: Password123
     `);

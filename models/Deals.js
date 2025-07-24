@@ -46,6 +46,12 @@ const dealSchema = new mongoose.Schema({
   dealEndsAt: {
     type: Date,
   },
+  commitmentStartAt: {
+    type: Date,
+  },
+  commitmentEndsAt: {
+    type: Date,
+  },
   singleStoreDeals: {
     type: String,
   },

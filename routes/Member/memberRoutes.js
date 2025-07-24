@@ -811,6 +811,30 @@ router.put('/commitments/:commitmentId/modify', async (req, res) => {
       return res.status(400).json({ message: 'Only pending commitments can be modified' });
     }
 
+    // Check if commitment period has ended
+    if (commitment.dealId.commitmentEndsAt) {
+      const commitmentEndDate = new Date(commitment.dealId.commitmentEndsAt);
+      const now = new Date();
+      if (now > commitmentEndDate) {
+        return res.status(400).json({
+          error: "Commitment period ended",
+          message: `The commitment period for this deal ended on ${commitmentEndDate.toLocaleDateString()}. You can no longer modify commitments to this deal.`
+        });
+      }
+    }
+
+    // Check if commitment period has started (optional validation)
+    if (commitment.dealId.commitmentStartAt) {
+      const commitmentStartDate = new Date(commitment.dealId.commitmentStartAt);
+      const now = new Date();
+      if (now < commitmentStartDate) {
+        return res.status(400).json({
+          error: "Commitment period not started",
+          message: `The commitment period for this deal starts on ${commitmentStartDate.toLocaleDateString()}. You can modify commitments during the active period.`
+        });
+      }
+    }
+
     // For backward compatibility with older clients
     res.status(400).json({ 
       message: 'This API is deprecated. Please use /modify-sizes endpoint for size-specific modifications.' 
@@ -845,6 +869,30 @@ router.put('/commitments/:commitmentId/modify-sizes', async (req, res) => {
 
     if (commitment.status !== 'pending') {
       return res.status(400).json({ message: 'Only pending commitments can be modified' });
+    }
+
+    // Check if commitment period has ended
+    if (commitment.dealId.commitmentEndsAt) {
+      const commitmentEndDate = new Date(commitment.dealId.commitmentEndsAt);
+      const now = new Date();
+      if (now > commitmentEndDate) {
+        return res.status(400).json({
+          error: "Commitment period ended",
+          message: `The commitment period for this deal ended on ${commitmentEndDate.toLocaleDateString()}. You can no longer modify commitments to this deal.`
+        });
+      }
+    }
+
+    // Check if commitment period has started (optional validation)
+    if (commitment.dealId.commitmentStartAt) {
+      const commitmentStartDate = new Date(commitment.dealId.commitmentStartAt);
+      const now = new Date();
+      if (now < commitmentStartDate) {
+        return res.status(400).json({
+          error: "Commitment period not started",
+          message: `The commitment period for this deal starts on ${commitmentStartDate.toLocaleDateString()}. You can modify commitments during the active period.`
+        });
+      }
     }
 
     // Verify all sizes exist in the deal
