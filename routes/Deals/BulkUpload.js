@@ -65,12 +65,11 @@ router.get('/template', (req, res) => {
     const headers = [
         { id: 'Name', title: 'Name' },
         { id: 'Description', title: 'Special Comment' },
-        { id: 'Size', title: 'Size (Format: "Size1:OrigCost1:DiscPrice1;Size2:OrigCost2:DiscPrice2")' },
+        { id: 'Size', title: 'Size (Format: "Size1:OrigCost1:DiscPrice1:Qty1-Disc1,Qty2-Disc2;Size2:OrigCost2:DiscPrice2:Qty1-Disc1")' },
         { id: 'Category', title: 'Category' },
-        { id: 'Deal Start Date (YYYY-MM-DD)', title: 'Deal Start Date (YYYY-MM-DD)' },
-        { id: 'Deal End Date (YYYY-MM-DD)', title: 'Deal End Date (YYYY-MM-DD)' },
+        { id: 'Deal Month', title: 'Deal Month (e.g., January)' },
+        { id: 'Deal Year', title: 'Deal Year (e.g., 2025)' },
         { id: 'Min Quantity for Discount', title: 'Min Quantity for Discount' },
-        { id: 'Discount Tiers', title: 'Discount Tiers (Format: "Qty1:Discount1%;Qty2:Discount2%")' },
         { id: 'Single Store Deals', title: 'Single Store Deals' },
         { id: 'Image URLs', title: 'Image URLs (Separate with ; or leave empty for default category images)' }
     ];
@@ -80,17 +79,16 @@ router.get('/template', (req, res) => {
         header: headers
     });
 
-    // Sample deals data with multiple sizes and discount tiers
+    // Sample deals data with multiple sizes and per-size discount tiers
     const sampleDeals = [
         {
             'Name': 'Premium Wine Pack',
             'Description': 'Exclusive selection of premium wines',
-            'Size': '750ml:29.99:24.99;1.5L:49.99:42.99;375ml:15.99:13.99',
+            'Size': '750ml:29.99:24.99:75-23.99,100-22.99;1.5L:49.99:42.99:50-39.99',
             'Category': 'Wine',
-            'Deal Start Date (YYYY-MM-DD)': '2025-05-15',
-            'Deal End Date (YYYY-MM-DD)': '2025-06-31',
+            'Deal Month': 'May',
+            'Deal Year': '2025',
             'Min Quantity for Discount': 50,
-            'Discount Tiers': '75:5%;100:10%;200:15%',
             'Single Store Deals': 'Store A: Special offer details',
             'Image URLs': defaultImages['Wine'].join(';')
         }
@@ -109,20 +107,95 @@ router.get('/template', (req, res) => {
         });
 });
 
+// --- Utility: Month/Year to Deal/Commitment Dates (copied from CreateDeal.jsx logic) ---
+const DEAL_MONTHS_TABLE = (() => {
+    const currentYear = new Date().getFullYear();
+    const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const table = [];
+    for (let year = currentYear; year <= currentYear + 2; year++) {
+        months.forEach((month, monthIndex) => {
+            // Calculate deadline (3 days before the month starts)
+            const monthStart = new Date(year, monthIndex, 1);
+            const deadline = new Date(monthStart);
+            deadline.setDate(deadline.getDate() - 3);
+            // Deal timeframe is the complete month
+            const timeframeStart = new Date(year, monthIndex, 1);
+            const timeframeEnd = new Date(year, monthIndex + 1, 0); // Last day of month
+            // Commitment timeframe (default: first 10 days)
+            let commitmentStart = new Date(year, monthIndex, 1);
+            let commitmentEnd = new Date(year, monthIndex, 10);
+            // Special cases (customize as needed)
+            if (month === 'September' && year === 2025) {
+                commitmentStart = new Date(2025, 8, 1);
+                commitmentEnd = new Date(2025, 8, 12);
+            } else if (month === 'October' && year === 2025) {
+                commitmentStart = new Date(2025, 9, 1);
+                commitmentEnd = new Date(2025, 9, 10);
+            } else if (month === 'November' && year === 2025) {
+                commitmentStart = new Date(2025, 10, 1);
+                commitmentEnd = new Date(2025, 10, 11);
+            } else if (month === 'December' && year === 2025) {
+                commitmentStart = new Date(2025, 11, 1);
+                commitmentEnd = new Date(2025, 11, 10);
+            } else if (month === 'January' && year === 2026) {
+                commitmentStart = new Date(2026, 0, 1);
+                commitmentEnd = new Date(2026, 0, 10);
+            } else if (month === 'February' && year === 2026) {
+                commitmentStart = new Date(2026, 1, 1);
+                commitmentEnd = new Date(2026, 1, 9);
+            } else if (month === 'March' && year === 2026) {
+                commitmentStart = new Date(2026, 2, 1);
+                commitmentEnd = new Date(2026, 2, 12);
+            } else if (month === 'April' && year === 2026) {
+                commitmentStart = new Date(2026, 3, 1);
+                commitmentEnd = new Date(2026, 3, 10);
+            } else if (month === 'May' && year === 2026) {
+                commitmentStart = new Date(2026, 4, 1);
+                commitmentEnd = new Date(2026, 4, 10);
+            } else if (month === 'June' && year === 2026) {
+                commitmentStart = new Date(2026, 5, 1);
+                commitmentEnd = new Date(2026, 5, 11);
+            } else if (month === 'July' && year === 2026) {
+                commitmentStart = new Date(2026, 6, 1);
+                commitmentEnd = new Date(2026, 6, 11);
+            } else if (month === 'August' && year === 2026) {
+                commitmentStart = new Date(2026, 7, 1);
+                commitmentEnd = new Date(2026, 7, 10);
+            }
+            table.push({
+                month,
+                year,
+                deadline: deadline,
+                timeframeStart: timeframeStart,
+                timeframeEnd: timeframeEnd,
+                commitmentStart: commitmentStart,
+                commitmentEnd: commitmentEnd
+            });
+        });
+    }
+    return table;
+})();
+
+function getDealMonthRow(month, year) {
+    return DEAL_MONTHS_TABLE.find(row =>
+        row.month.toLowerCase() === month.toLowerCase() && Number(row.year) === Number(year)
+    );
+}
+
 // Add this validation function
 const validateDealRow = (row) => {
     const errors = [];
-    
     // Check if row is empty
     if (Object.values(row).every(value => !value)) {
         return ['Empty row detected - please remove empty rows'];
     }
-
     // Required field validation with trimming
     if (!row.name?.trim()) errors.push('Name is required');
     if (!row.category?.trim()) errors.push('Category is required');
     if (!row.minQtyForDiscount?.toString().trim()) errors.push('Minimum Quantity for Discount is required');
-    
     // Validate sizes (now in format "Size1:OrigCost1:DiscPrice1;Size2:OrigCost2:DiscPrice2")
     if (!row.sizes) {
         errors.push('At least one size is required');
@@ -133,28 +206,23 @@ const validateDealRow = (row) => {
         } else {
             for (const sizeEntry of sizeEntries) {
                 const [size, originalCost, discountPrice] = sizeEntry.split(':').map(item => item?.trim());
-                
                 if (!size || !originalCost || !discountPrice) {
                     errors.push(`Size format incorrect for "${sizeEntry}". Required format: "Size:OrigCost:DiscPrice"`);
                     continue;
                 }
-                
                 // Validate price values
                 const origCostNum = Number(originalCost);
                 const discPriceNum = Number(discountPrice);
-                
                 if (isNaN(origCostNum)) {
                     errors.push(`Original cost for size "${size}" must be a valid number, got: "${originalCost}"`);
                 } else if (origCostNum < 0) {
                     errors.push(`Original cost for size "${size}" cannot be negative`);
                 }
-                
                 if (isNaN(discPriceNum)) {
                     errors.push(`Discount price for size "${size}" must be a valid number, got: "${discountPrice}"`);
                 } else if (discPriceNum < 0) {
                     errors.push(`Discount price for size "${size}" cannot be negative`);
                 }
-                
                 // Validate price relationship
                 if (!isNaN(origCostNum) && !isNaN(discPriceNum) && discPriceNum >= origCostNum) {
                     errors.push(`Discount price (${discPriceNum}) for size "${size}" must be less than original cost (${origCostNum})`);
@@ -162,31 +230,24 @@ const validateDealRow = (row) => {
             }
         }
     }
-    
     // Validate discount tiers if provided
     if (row.discountTiers) {
         const tierEntries = row.discountTiers.split(';').filter(entry => entry.trim());
-        
         if (tierEntries.length > 0) {
             // Parse minimum quantity for validation
             const minQty = Number(row.minQtyForDiscount);
-            
             let prevQty = 0;
             let prevDiscount = 0;
-            
             for (const tierEntry of tierEntries) {
                 const [qtyStr, discountStr] = tierEntry.split(':').map(item => item?.trim());
-                
                 // Validate format
                 if (!qtyStr || !discountStr) {
                     errors.push(`Tier format incorrect for "${tierEntry}". Required format: "Quantity:Discount%"`);
                     continue;
                 }
-                
                 // Remove % sign if present
                 const discount = Number(discountStr.replace('%', ''));
                 const qty = Number(qtyStr);
-                
                 // Validate values
                 if (isNaN(qty)) {
                     errors.push(`Tier quantity must be a valid number, got: "${qtyStr}"`);
@@ -195,28 +256,23 @@ const validateDealRow = (row) => {
                 } else if (qty <= minQty) {
                     errors.push(`Tier quantity (${qty}) must be greater than minimum quantity for discount (${minQty})`);
                 }
-                
                 if (isNaN(discount)) {
                     errors.push(`Tier discount must be a valid number, got: "${discountStr}"`);
                 } else if (discount <= 0 || discount >= 100) {
                     errors.push(`Tier discount must be between 0 and 100%, got: "${discount}%"`);
                 }
-                
                 // Check progression
                 if (qty <= prevQty && prevQty > 0) {
                     errors.push(`Tier quantities must increase in order. Got ${qty} after ${prevQty}`);
                 }
-                
                 if (discount <= prevDiscount && prevDiscount > 0) {
                     errors.push(`Tier discounts must increase in order. Got ${discount}% after ${prevDiscount}%`);
                 }
-                
                 prevQty = qty;
                 prevDiscount = discount;
             }
         }
     }
-    
     // Validate minimum quantity
     if (row.minQtyForDiscount) {
         const minQty = Number(row.minQtyForDiscount);
@@ -226,15 +282,6 @@ const validateDealRow = (row) => {
             errors.push(`Min Quantity for Discount must be at least 1`);
         }
     }
-    
-    // Date validation with better error message
-    if (row.dealEndsAt) {
-        const dateValue = row.dealEndsAt.toString().trim();
-        if (dateValue && isNaN(Date.parse(dateValue))) {
-            errors.push(`Deal End Date must be in YYYY-MM-DD format, got: "${dateValue}"`);
-        }
-    }
-
     // Image URLs validation
     if (row.images) {
         const urls = row.images.split(';').map(url => url.trim()).filter(url => url);
@@ -246,7 +293,22 @@ const validateDealRow = (row) => {
             }
         }
     }
-
+    // Validate month/year
+    if (!row.dealMonth || !row.dealYear) {
+        errors.push('Deal Month and Deal Year are required');
+    } else {
+        const validMonths = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+        if (!validMonths.includes(row.dealMonth.trim())) {
+            errors.push(`Invalid Deal Month: "${row.dealMonth}". Must be one of: ${validMonths.join(', ')}`);
+        }
+        const yearNum = Number(row.dealYear);
+        if (isNaN(yearNum) || yearNum < 2024) {
+            errors.push(`Invalid Deal Year: "${row.dealYear}". Must be a valid year >= 2024`);
+        }
+    }
     return errors;
 };
 
@@ -258,10 +320,9 @@ const csvOptions = {
         'Description',
         'Size',
         'Category',
-        'Deal Start Date (YYYY-MM-DD)',
-        'Deal End Date (YYYY-MM-DD)',
+        'Deal Month',
+        'Deal Year',
         'Min Quantity for Discount',
-        'Discount Tiers',
         'Single Store Deals',
         'Image URLs'
     ],
@@ -317,61 +378,64 @@ router.post('/upload/:userId', upload.single('file'), async (req, res) => {
                             description: row['Description'] || '',
                             sizes: row['Size'] || '',
                             category: row['Category'] || '',
-                            dealStartAt: row['Deal Start Date (YYYY-MM-DD)'] || '',
-                            dealEndsAt: row['Deal End Date (YYYY-MM-DD)'] || '',
+                            dealMonth: row['Deal Month'] || '',
+                            dealYear: row['Deal Year'] || '',
                             singleStoreDeals: row['Single Store Deals'] || '',
                             minQtyForDiscount: row['Min Quantity for Discount'] || '',
-                            discountTiers: row['Discount Tiers'] || '',
                             images: row['Image URLs'] || ''
                         };
 
                         // Validate the normalized row
                         const rowErrors = validateDealRow(normalizedRow);
+                        // Calculate dates from month/year
+                        const monthRow = getDealMonthRow(normalizedRow.dealMonth, normalizedRow.dealYear);
+                        if (!monthRow) {
+                            rowErrors.push(`Invalid Deal Month/Year: ${normalizedRow.dealMonth} ${normalizedRow.dealYear}`);
+                        }
                         if (rowErrors.length > 0) {
                             errors.push(`Row ${rowNumber}: ${rowErrors.join('; ')}`);
                             return;
                         }
 
-                        // Process sizes (format: "Size1:OrigCost1:DiscPrice1;Size2:OrigCost2:DiscPrice2")
+                        // Process sizes (format: "Size:OrigCost:DiscPrice:Qty1-Disc1,Qty2-Disc2")
                         const sizes = [];
                         if (normalizedRow.sizes) {
                             const sizeEntries = normalizedRow.sizes.split(';').filter(entry => entry.trim());
                             for (const sizeEntry of sizeEntries) {
-                                const [size, originalCost, discountPrice] = sizeEntry.split(':').map(item => item?.trim());
+                                const parts = sizeEntry.split(':').map(item => item?.trim());
+                                const [size, originalCost, discountPrice, tiersStr] = parts;
+                                let discountTiers = [];
+                                if (tiersStr) {
+                                    discountTiers = tiersStr.split(',').map(tier => {
+                                        const [qty, disc] = tier.split('-').map(x => x.trim());
+                                        return {
+                                            tierQuantity: Number(qty),
+                                            tierDiscount: Number(disc)
+                                        };
+                                    }).filter(tier => !isNaN(tier.tierQuantity) && !isNaN(tier.tierDiscount));
+                                    discountTiers.sort((a, b) => a.tierQuantity - b.tierQuantity);
+                                }
                                 sizes.push({
                                     size: size,
                                     originalCost: Number(originalCost),
-                                    discountPrice: Number(discountPrice)
+                                    discountPrice: Number(discountPrice),
+                                    discountTiers: discountTiers
                                 });
                             }
                         }
 
-                        // Process discount tiers (format: "Qty1:Discount1%;Qty2:Discount2%")
-                        const discountTiers = [];
-                        if (normalizedRow.discountTiers) {
-                            const tierEntries = normalizedRow.discountTiers.split(';').filter(entry => entry.trim());
-                            for (const tierEntry of tierEntries) {
-                                const [qtyStr, discountStr] = tierEntry.split(':').map(item => item?.trim());
-                                const discount = Number(discountStr.replace('%', ''));
-                                discountTiers.push({
-                                    tierQuantity: Number(qtyStr),
-                                    tierDiscount: discount
-                                });
-                            }
-                            // Sort tiers by quantity
-                            discountTiers.sort((a, b) => a.tierQuantity - b.tierQuantity);
-                        }
-
+                        // Use calculated dates
                         deals.push({
                             name: normalizedRow.name.trim(),
                             description: normalizedRow.description.trim(),
                             sizes: sizes,
                             category: normalizedRow.category.trim(),
-                            dealEndsAt: normalizedRow.dealEndsAt ? new Date(normalizedRow.dealEndsAt.toString().trim()) : null,
-                            dealStartAt: normalizedRow.dealStartAt ? new Date(normalizedRow.dealStartAt.toString().trim()) : null,
+                            dealEndsAt: monthRow ? monthRow.timeframeEnd : null,
+                            dealStartAt: monthRow ? monthRow.timeframeStart : null,
+                            commitmentStartAt: monthRow ? monthRow.commitmentStart : null,
+                            commitmentEndsAt: monthRow ? monthRow.commitmentEnd : null,
                             singleStoreDeals: normalizedRow.singleStoreDeals.trim(),
                             minQtyForDiscount: Number(normalizedRow.minQtyForDiscount.toString().trim()),
-                            discountTiers: discountTiers,
                             images: normalizedRow.images ? 
                                 normalizedRow.images.split(';')
                                     .map(url => url.trim())
@@ -379,8 +443,6 @@ router.post('/upload/:userId', upload.single('file'), async (req, res) => {
                                 (defaultImages[normalizedRow.category.trim()] || defaultImages.default),
                             distributor: userId,
                             status: 'active',
-                            soldQuantity: 0,
-                            totalSoldPrice: 0,
                             views: 0,
                             impressions: 0,
                             notificationHistory: new Map()
