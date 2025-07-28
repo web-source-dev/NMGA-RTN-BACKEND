@@ -32,25 +32,32 @@ router.get('/:distributorId', async (req, res) => {
     }
     
     // Handle month filtering
-    const now = new Date();
-    // If month is provided, use it, otherwise use current month
-    const filterMonth = month ? parseInt(month) - 1 : now.getMonth(); // Months are 0-indexed in JS
-    const filterYear = now.getFullYear();
-    
-    // Create start and end date for the selected month
-    const startDate = new Date(filterYear, filterMonth, 1);
-    const endDate = new Date(filterYear, filterMonth + 1, 0, 23, 59, 59, 999);
-    
-    // Filter deals that are active during the selected month (overlap with the month)
-    filter.$or = [
-      { 
-        dealStartAt: { $lte: endDate },
-        dealEndsAt: { $gte: startDate }
-      },
-      // Include deals without specific dates
-      { dealStartAt: { $exists: false } },
-      { dealEndsAt: { $exists: false } }
-    ];
+    let currentMonth = null;
+    if (month && month !== '') {
+      // If month is provided, filter by that specific month
+      const now = new Date();
+      const filterMonth = parseInt(month) - 1; // Months are 0-indexed in JS
+      const filterYear = now.getFullYear();
+      
+      // Create start and end date for the selected month
+      const startDate = new Date(filterYear, filterMonth, 1);
+      const endDate = new Date(filterYear, filterMonth + 1, 0, 23, 59, 59, 999);
+      
+      // Filter deals that are active during the selected month (overlap with the month)
+      filter.$or = [
+        { 
+          dealStartAt: { $lte: endDate },
+          dealEndsAt: { $gte: startDate }
+        },
+        // Include deals without specific dates
+        { dealStartAt: { $exists: false } },
+        { dealEndsAt: { $exists: false } }
+      ];
+      
+      // Set currentMonth for response
+      currentMonth = filterMonth + 1; // Convert back to 1-indexed for frontend
+    }
+    // If no month is provided (All Months selected), don't add any date filtering
     
     // Add search filter if provided
     if (search) {
@@ -199,7 +206,7 @@ router.get('/:distributorId', async (req, res) => {
       totalDeals: deals.length,
       deals: processedDeals,
       categories,
-      currentMonth: filterMonth + 1 // Convert back to 1-indexed for frontend
+      currentMonth: currentMonth // Will be null if "All Months" is selected
     });
     
   } catch (error) {
