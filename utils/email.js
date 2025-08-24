@@ -1,4 +1,4 @@
-const nodemailer = require('nodemailer');
+const SibApiV3Sdk = require('@getbrevo/brevo');
 const Log = require('../models/Logs');
 const User = require('../models/User');
 
@@ -28,23 +28,22 @@ const sendEmail = async (to, subject, html) => {
     htmlLength: html?.length
   });
 
-  const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com", // Zoho SMTP Server
-    port: 465, // Use 465 for SSL (or 587 for TLS)
-    secure: true, // true for SSL (465), false for TLS (587)
-    auth: {
-      user: process.env.EMAIL_USER, // Your Zoho email
-      pass: process.env.EMAIL_PASS, // Your Zoho App Password
-    },
-  });
+  // Configure Brevo API
+  const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+  apiInstance.setApiKey(SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY);
+
+  // Prepare email data
+  const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+  sendSmtpEmail.to = uniqueEmails.map(email => ({ email }));
+  sendSmtpEmail.subject = subject;
+  sendSmtpEmail.htmlContent = html;
+  sendSmtpEmail.sender = {
+    name: "New Mexico Grocers Association",
+    email: process.env.BREVO_EMAIL_USER
+  };
 
   try {
-    const result = await transporter.sendMail({
-      from: `"RTN Global" <${process.env.EMAIL_USER}>`,
-      to: uniqueEmails.join(', '),
-      subject,
-      html,
-    });
+    const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
 
     console.log('Email sent successfully:', {
       messageId: result.messageId,

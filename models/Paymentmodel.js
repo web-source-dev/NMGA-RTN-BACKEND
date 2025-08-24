@@ -60,10 +60,5 @@ const paymentSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Add indexes for better query performance
-paymentSchema.index({ userId: 1, createdAt: -1 });
-paymentSchema.index({ dealId: 1 });
-paymentSchema.index({ transactionId: 1 }, { unique: true });
-
 module.exports = mongoose.model('Payment', paymentSchema);
  
