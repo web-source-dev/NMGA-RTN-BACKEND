@@ -1,6 +1,7 @@
 const fs = require('fs');
 const xlsx = require('xlsx');
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 const User = require('./models/User');
 require('dotenv').config();
 
@@ -8,6 +9,7 @@ require('dotenv').config();
 const stats = {
   total: 0,
   created: 0,
+  updated: 0,
   skipped: 0,
   errors: 0,
   bySheet: {},
@@ -85,6 +87,7 @@ async function importUsers() {
       stats.bySheet[sheetName] = {
         total: 0,
         created: 0,
+        updated: 0,
         skipped: 0,
         errors: 0,
         skipReasons: {
@@ -149,6 +152,10 @@ async function importUsers() {
             getFieldValue(record, 'ZIP') || ''
           ].filter(Boolean).join(', ');
           
+          // Hash the default password using bcrypt (same as registration process)
+          const defaultPassword = 'changeme123';
+          const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+          
           // Create user object
           const userData = {
             email: normalizedEmail,
@@ -159,27 +166,36 @@ async function importUsers() {
             fax: getFieldValue(record, 'FAX') || '',
             phone: getFieldValue(record, 'PHONE') || '',
             role: 'member', // Set role to "member" if CO-OP field has value
-            password: '$2b$10$Vmn9Vm1DeFrhEP/GpYuFBeA3ymAK.VoAw5NyMbS8Vij1P.nHD4TWa', // default password: "changeme123"
+            password: hashedPassword, // Use bcrypt hashed password (same as registration)
             isVerified: true // Set users as verified
           };
           
           // Check if user already exists
           const existingUser = await User.findOne({ email: userData.email });
           if (existingUser) {
-            console.log(`User with email ${userData.email} already exists. Skipping.`);
-            stats.skipped++;
-            stats.skipReasons.alreadyExists++;
-            stats.bySheet[sheetName].skipped++;
-            stats.bySheet[sheetName].skipReasons.alreadyExists++;
-            continue;
+            // Update existing user with new bcrypt password and other fields
+            existingUser.password = hashedPassword;
+            existingUser.name = userData.name;
+            existingUser.businessName = userData.businessName;
+            existingUser.contactPerson = userData.contactPerson;
+            existingUser.address = userData.address;
+            existingUser.fax = userData.fax;
+            existingUser.phone = userData.phone;
+            existingUser.role = userData.role;
+            existingUser.isVerified = userData.isVerified;
+            
+            await existingUser.save();
+            console.log(`Updated existing user: ${userData.email} with new bcrypt password`);
+            stats.updated++;
+            stats.bySheet[sheetName].updated++;
+          } else {
+            // Create new user
+            const user = new User(userData);
+            await user.save();
+            console.log(`Created new user: ${userData.email}`);
+            stats.created++;
+            stats.bySheet[sheetName].created++;
           }
-          
-          // Create the user
-          const user = new User(userData);
-          await user.save();
-          console.log(`Created user: ${userData.email}`);
-          stats.created++;
-          stats.bySheet[sheetName].created++;
         } catch (error) {
           console.error(`Error processing record:`, error);
           stats.errors++;
@@ -194,6 +210,7 @@ async function importUsers() {
     console.log('\n======= IMPORT COMPLETED =======');
     console.log(`Total records across all sheets: ${stats.total}`);
     console.log(`Users created: ${stats.created}`);
+    console.log(`Users updated: ${stats.updated}`);
     console.log(`Records skipped: ${stats.skipped}`);
     console.log(`Errors: ${stats.errors}`);
     
@@ -202,6 +219,7 @@ async function importUsers() {
       stats: {
         total: stats.total,
         created: stats.created,
+        updated: stats.updated,
         skipped: stats.skipped,
         errors: stats.errors,
         skipReasons: stats.skipReasons
