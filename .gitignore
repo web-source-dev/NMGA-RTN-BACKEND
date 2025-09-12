@@ -1,0 +1,9 @@
+# Ignore environment variables
+.env
+# Ignore credentials file
+credentials.json 
+
+node_modules
+
+users.xlsx
+
