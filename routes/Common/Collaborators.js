@@ -77,7 +77,7 @@ router.post('/', isAuthenticated, async (req, res) => {
       email: email.toLowerCase(),
       role,
       password: hashedPassword,
-      status: 'invited',
+      status: 'active',
       invitationToken,
       invitationExpiry
     };

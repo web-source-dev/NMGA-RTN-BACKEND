@@ -109,7 +109,7 @@ const userSchema = new mongoose.Schema({
       default: 'viewer' 
     },
     password: String,
-    status: { type: String, enum: ['active', 'restricted', 'deleted','invited','accepted'], default: 'invited' },
+    status: { type: String, enum: ['active', 'restricted', 'deleted','invited','accepted'], default: 'active' },
     invitationToken: String,
     invitationExpiry: Date
   }],
