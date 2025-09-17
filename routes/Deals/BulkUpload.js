@@ -68,13 +68,33 @@ router.get('/template', isDistributorAdmin, async (req, res) => {
     const headers = [
         { id: 'Name', title: 'Name' },
         { id: 'Description', title: 'Special Comment' },
-        { id: 'Size', title: 'Size (Format: "Size1:OrigCost1:DiscPrice1:Qty1-Disc1,Qty2-Disc2;Size2:OrigCost2:DiscPrice2:Qty1-Disc1")' },
         { id: 'Category', title: 'Category' },
         { id: 'Deal Month', title: 'Deal Month (e.g., January)' },
         { id: 'Deal Year', title: 'Deal Year (e.g., 2025)' },
         { id: 'Min Quantity for Discount', title: 'Min Quantity for Discount' },
         { id: 'Single Store Deals', title: 'Single Store Deals' },
-        { id: 'Image URLs', title: 'Image URLs (Separate with ; or leave empty for default category images)' }
+        { id: 'Image URLs', title: 'Image URLs (Separate with ; or leave empty for default category images)' },
+        // Size columns - up to 10 sizes supported
+        { id: 'Size 1', title: 'Size 1' },
+        { id: 'Original Cost 1', title: 'Original Cost 1' },
+        { id: 'Discount Price 1', title: 'Discount Price 1' },
+        { id: 'Discount Tiers 1', title: 'Discount Tiers 1 (Format: Qty1-Disc1,Qty2-Disc2)' },
+        { id: 'Size 2', title: 'Size 2' },
+        { id: 'Original Cost 2', title: 'Original Cost 2' },
+        { id: 'Discount Price 2', title: 'Discount Price 2' },
+        { id: 'Discount Tiers 2', title: 'Discount Tiers 2 (Format: Qty1-Disc1,Qty2-Disc2)' },
+        { id: 'Size 3', title: 'Size 3' },
+        { id: 'Original Cost 3', title: 'Original Cost 3' },
+        { id: 'Discount Price 3', title: 'Discount Price 3' },
+        { id: 'Discount Tiers 3', title: 'Discount Tiers 3 (Format: Qty1-Disc1,Qty2-Disc2)' },
+        { id: 'Size 4', title: 'Size 4' },
+        { id: 'Original Cost 4', title: 'Original Cost 4' },
+        { id: 'Discount Price 4', title: 'Discount Price 4' },
+        { id: 'Discount Tiers 4', title: 'Discount Tiers 4 (Format: Qty1-Disc1,Qty2-Disc2)' },
+        { id: 'Size 5', title: 'Size 5' },
+        { id: 'Original Cost 5', title: 'Original Cost 5' },
+        { id: 'Discount Price 5', title: 'Discount Price 5' },
+        { id: 'Discount Tiers 5', title: 'Discount Tiers 5 (Format: Qty1-Disc1,Qty2-Disc2)' }
     ];
 
     const csvWriter = createCsvWriter({
@@ -83,17 +103,37 @@ router.get('/template', isDistributorAdmin, async (req, res) => {
     });
 
     // Sample deals data with multiple sizes and per-size discount tiers
+    const currentYear = new Date().getFullYear();
     const sampleDeals = [
         {
             'Name': 'Premium Wine Pack',
             'Description': 'Exclusive selection of premium wines',
-            'Size': '750ml:29.99:24.99:75-23.99,100-22.99;1.5L:49.99:42.99:50-39.99',
             'Category': 'Wine',
-            'Deal Month': 'May',
-            'Deal Year': '2025',
+            'Deal Month': 'September',
+            'Deal Year': currentYear.toString(),
             'Min Quantity for Discount': 50,
             'Single Store Deals': 'Store A: Special offer details',
-            'Image URLs': defaultImages['Wine'].join(';')
+            'Image URLs': defaultImages['Wine'].join(';'),
+            'Size 1': '750ml',
+            'Original Cost 1': '29.99',
+            'Discount Price 1': '24.99',
+            'Discount Tiers 1': '75-23.99,100-22.99',
+            'Size 2': '1.5L',
+            'Original Cost 2': '49.99',
+            'Discount Price 2': '42.99',
+            'Discount Tiers 2': '75-39.99,100-38.99',
+            'Size 3': '',
+            'Original Cost 3': '',
+            'Discount Price 3': '',
+            'Discount Tiers 3': '',
+            'Size 4': '',
+            'Original Cost 4': '',
+            'Discount Price 4': '',
+            'Discount Tiers 4': '',
+            'Size 5': '',
+            'Original Cost 5': '',
+            'Discount Price 5': '',
+            'Discount Tiers 5': ''
         }
     ];
 
@@ -138,7 +178,7 @@ const DEAL_MONTHS_TABLE = (() => {
     // Generate for current year and next year
     for (let year = currentYear; year <= currentYear + 2; year++) {
         months.forEach((month, monthIndex) => {
-            // Skip past months in current year
+            // Skip past months in current year (but allow current month and future months)
             if (year === currentYear && monthIndex < currentMonth) {
                 return;
             }
@@ -238,7 +278,7 @@ function getDealMonthRow(month, year) {
     );
 }
 
-// Add this validation function
+// Add this validation function for new CSV format
 const validateDealRow = (row) => {
     const errors = [];
     // Check if row is empty
@@ -249,83 +289,99 @@ const validateDealRow = (row) => {
     if (!row.name?.trim()) errors.push('Name is required');
     if (!row.category?.trim()) errors.push('Category is required');
     if (!row.minQtyForDiscount?.toString().trim()) errors.push('Minimum Quantity for Discount is required');
-    // Validate sizes (now in format "Size1:OrigCost1:DiscPrice1;Size2:OrigCost2:DiscPrice2")
-    if (!row.sizes) {
+    
+    // Validate sizes - check up to 5 size columns
+    let hasValidSize = false;
+    for (let i = 1; i <= 5; i++) {
+        const size = row[`size${i}`]?.trim();
+        const originalCost = row[`originalCost${i}`]?.trim();
+        const discountPrice = row[`discountPrice${i}`]?.trim();
+        const discountTiers = row[`discountTiers${i}`]?.trim();
+        
+        // If any size field is filled, all must be filled
+        if (size || originalCost || discountPrice) {
+            if (!size || !originalCost || !discountPrice) {
+                errors.push(`Size ${i}: If you provide size information, all fields (Size, Original Cost, Discount Price) are required`);
+                continue;
+            }
+            
+            hasValidSize = true;
+            
+            // Validate price values
+            const origCostNum = Number(originalCost);
+            const discPriceNum = Number(discountPrice);
+            
+            if (isNaN(origCostNum)) {
+                errors.push(`Size ${i}: Original cost must be a valid number, got: "${originalCost}"`);
+            } else if (origCostNum < 0) {
+                errors.push(`Size ${i}: Original cost cannot be negative`);
+            }
+            
+            if (isNaN(discPriceNum)) {
+                errors.push(`Size ${i}: Discount price must be a valid number, got: "${discountPrice}"`);
+            } else if (discPriceNum < 0) {
+                errors.push(`Size ${i}: Discount price cannot be negative`);
+            }
+            
+            // Validate price relationship
+            if (!isNaN(origCostNum) && !isNaN(discPriceNum) && discPriceNum >= origCostNum) {
+                errors.push(`Size ${i}: Discount price (${discPriceNum}) must be less than original cost (${origCostNum})`);
+            }
+            
+            // Validate discount tiers if provided
+            if (discountTiers) {
+                const tierEntries = discountTiers.split(',').map(tier => tier.trim()).filter(tier => tier);
+                if (tierEntries.length > 0) {
+                    const minQty = Number(row.minQtyForDiscount);
+                    let prevQty = 0;
+                    let prevDiscount = 0;
+                    
+                    for (const tierEntry of tierEntries) {
+                        const [qtyStr, discountStr] = tierEntry.split('-').map(item => item?.trim());
+                        
+                        if (!qtyStr || !discountStr) {
+                            errors.push(`Size ${i}: Tier format incorrect for "${tierEntry}". Required format: "Quantity-DiscountPrice"`);
+                            continue;
+                        }
+                        
+                        const qty = Number(qtyStr);
+                        const discount = Number(discountStr);
+                        
+                        if (isNaN(qty)) {
+                            errors.push(`Size ${i}: Tier quantity must be a valid number, got: "${qtyStr}"`);
+                        } else if (qty < 0) {
+                            errors.push(`Size ${i}: Tier quantity cannot be negative`);
+                        } else if (qty < minQty) {
+                            errors.push(`Size ${i}: Tier quantity (${qty}) must be greater than or equal to minimum quantity for discount (${minQty})`);
+                        }
+                        
+                        if (isNaN(discount)) {
+                            errors.push(`Size ${i}: Tier discount must be a valid number, got: "${discountStr}"`);
+                        } else if (discount < 0) {
+                            errors.push(`Size ${i}: Tier discount cannot be negative`);
+                        }
+                        
+                        // Check progression
+                        if (qty <= prevQty && prevQty > 0) {
+                            errors.push(`Size ${i}: Tier quantities must increase in order. Got ${qty} after ${prevQty}`);
+                        }
+                        // For discount prices, higher quantities should have lower prices (better deals)
+                        if (discount >= prevDiscount && prevDiscount > 0) {
+                            errors.push(`Size ${i}: Tier discount prices should decrease as quantities increase (better deals for higher quantities). Got ${discount} after ${prevDiscount}`);
+                        }
+                        
+                        prevQty = qty;
+                        prevDiscount = discount;
+                    }
+                }
+            }
+        }
+    }
+    
+    if (!hasValidSize) {
         errors.push('At least one size is required');
-    } else {
-        const sizeEntries = row.sizes.split(';').filter(entry => entry.trim());
-        if (sizeEntries.length === 0) {
-            errors.push('At least one size is required');
-        } else {
-            for (const sizeEntry of sizeEntries) {
-                const [size, originalCost, discountPrice] = sizeEntry.split(':').map(item => item?.trim());
-                if (!size || !originalCost || !discountPrice) {
-                    errors.push(`Size format incorrect for "${sizeEntry}". Required format: "Size:OrigCost:DiscPrice"`);
-                    continue;
-                }
-                // Validate price values
-                const origCostNum = Number(originalCost);
-                const discPriceNum = Number(discountPrice);
-                if (isNaN(origCostNum)) {
-                    errors.push(`Original cost for size "${size}" must be a valid number, got: "${originalCost}"`);
-                } else if (origCostNum < 0) {
-                    errors.push(`Original cost for size "${size}" cannot be negative`);
-                }
-                if (isNaN(discPriceNum)) {
-                    errors.push(`Discount price for size "${size}" must be a valid number, got: "${discountPrice}"`);
-                } else if (discPriceNum < 0) {
-                    errors.push(`Discount price for size "${size}" cannot be negative`);
-                }
-                // Validate price relationship
-                if (!isNaN(origCostNum) && !isNaN(discPriceNum) && discPriceNum >= origCostNum) {
-                    errors.push(`Discount price (${discPriceNum}) for size "${size}" must be less than original cost (${origCostNum})`);
-                }
-            }
-        }
     }
-    // Validate discount tiers if provided
-    if (row.discountTiers) {
-        const tierEntries = row.discountTiers.split(';').filter(entry => entry.trim());
-        if (tierEntries.length > 0) {
-            // Parse minimum quantity for validation
-            const minQty = Number(row.minQtyForDiscount);
-            let prevQty = 0;
-            let prevDiscount = 0;
-            for (const tierEntry of tierEntries) {
-                const [qtyStr, discountStr] = tierEntry.split(':').map(item => item?.trim());
-                // Validate format
-                if (!qtyStr || !discountStr) {
-                    errors.push(`Tier format incorrect for "${tierEntry}". Required format: "Quantity:Discount%"`);
-                    continue;
-                }
-                // Remove % sign if present
-                const discount = Number(discountStr.replace('%', ''));
-                const qty = Number(qtyStr);
-                // Validate values
-                if (isNaN(qty)) {
-                    errors.push(`Tier quantity must be a valid number, got: "${qtyStr}"`);
-                } else if (qty < 0) {
-                    errors.push(`Tier quantity cannot be negative`);
-                } else if (qty <= minQty) {
-                    errors.push(`Tier quantity (${qty}) must be greater than minimum quantity for discount (${minQty})`);
-                }
-                if (isNaN(discount)) {
-                    errors.push(`Tier discount must be a valid number, got: "${discountStr}"`);
-                } else if (discount <= 0 || discount >= 100) {
-                    errors.push(`Tier discount must be between 0 and 100%, got: "${discount}%"`);
-                }
-                // Check progression
-                if (qty <= prevQty && prevQty > 0) {
-                    errors.push(`Tier quantities must increase in order. Got ${qty} after ${prevQty}`);
-                }
-                if (discount <= prevDiscount && prevDiscount > 0) {
-                    errors.push(`Tier discounts must increase in order. Got ${discount}% after ${prevDiscount}%`);
-                }
-                prevQty = qty;
-                prevDiscount = discount;
-            }
-        }
-    }
+    
     // Validate minimum quantity
     if (row.minQtyForDiscount) {
         const minQty = Number(row.minQtyForDiscount);
@@ -335,6 +391,7 @@ const validateDealRow = (row) => {
             errors.push(`Min Quantity for Discount must be at least 1`);
         }
     }
+    
     // Image URLs validation
     if (row.images) {
         const urls = row.images.split(';').map(url => url.trim()).filter(url => url);
@@ -346,6 +403,7 @@ const validateDealRow = (row) => {
             }
         }
     }
+    
     // Validate month/year
     if (!row.dealMonth || !row.dealYear) {
         errors.push('Deal Month and Deal Year are required');
@@ -358,10 +416,12 @@ const validateDealRow = (row) => {
             errors.push(`Invalid Deal Month: "${row.dealMonth}". Must be one of: ${validMonths.join(', ')}`);
         }
         const yearNum = Number(row.dealYear);
-        if (isNaN(yearNum) || yearNum < 2024) {
-            errors.push(`Invalid Deal Year: "${row.dealYear}". Must be a valid year >= 2024`);
+        const currentYear = new Date().getFullYear();
+        if (isNaN(yearNum) || yearNum < currentYear) {
+            errors.push(`Invalid Deal Year: "${row.dealYear}". Must be a valid year >= ${currentYear}`);
         }
     }
+    
     return errors;
 };
 
@@ -371,13 +431,18 @@ const csvOptions = {
     headers: [
         'Name',
         'Description',
-        'Size',
         'Category',
         'Deal Month',
         'Deal Year',
         'Min Quantity for Discount',
         'Single Store Deals',
-        'Image URLs'
+        'Image URLs',
+        // Size columns
+        'Size 1', 'Original Cost 1', 'Discount Price 1', 'Discount Tiers 1',
+        'Size 2', 'Original Cost 2', 'Discount Price 2', 'Discount Tiers 2',
+        'Size 3', 'Original Cost 3', 'Discount Price 3', 'Discount Tiers 3',
+        'Size 4', 'Original Cost 4', 'Discount Price 4', 'Discount Tiers 4',
+        'Size 5', 'Original Cost 5', 'Discount Price 5', 'Discount Tiers 5'
     ],
     trim: true,
     skipEmptyLines: true
@@ -431,13 +496,33 @@ router.post('/upload', isDistributorAdmin, upload.single('file'), async (req, re
                         const normalizedRow = {
                             name: row['Name'] || '',
                             description: row['Description'] || '',
-                            sizes: row['Size'] || '',
                             category: row['Category'] || '',
                             dealMonth: row['Deal Month'] || '',
                             dealYear: row['Deal Year'] || '',
                             singleStoreDeals: row['Single Store Deals'] || '',
                             minQtyForDiscount: row['Min Quantity for Discount'] || '',
-                            images: row['Image URLs'] || ''
+                            images: row['Image URLs'] || '',
+                            // Size fields
+                            size1: row['Size 1'] || '',
+                            originalCost1: row['Original Cost 1'] || '',
+                            discountPrice1: row['Discount Price 1'] || '',
+                            discountTiers1: row['Discount Tiers 1'] || '',
+                            size2: row['Size 2'] || '',
+                            originalCost2: row['Original Cost 2'] || '',
+                            discountPrice2: row['Discount Price 2'] || '',
+                            discountTiers2: row['Discount Tiers 2'] || '',
+                            size3: row['Size 3'] || '',
+                            originalCost3: row['Original Cost 3'] || '',
+                            discountPrice3: row['Discount Price 3'] || '',
+                            discountTiers3: row['Discount Tiers 3'] || '',
+                            size4: row['Size 4'] || '',
+                            originalCost4: row['Original Cost 4'] || '',
+                            discountPrice4: row['Discount Price 4'] || '',
+                            discountTiers4: row['Discount Tiers 4'] || '',
+                            size5: row['Size 5'] || '',
+                            originalCost5: row['Original Cost 5'] || '',
+                            discountPrice5: row['Discount Price 5'] || '',
+                            discountTiers5: row['Discount Tiers 5'] || ''
                         };
 
                         // Validate the normalized row
@@ -452,16 +537,18 @@ router.post('/upload', isDistributorAdmin, upload.single('file'), async (req, re
                             return;
                         }
 
-                        // Process sizes (format: "Size:OrigCost:DiscPrice:Qty1-Disc1,Qty2-Disc2")
+                        // Process sizes from individual columns
                         const sizes = [];
-                        if (normalizedRow.sizes) {
-                            const sizeEntries = normalizedRow.sizes.split(';').filter(entry => entry.trim());
-                            for (const sizeEntry of sizeEntries) {
-                                const parts = sizeEntry.split(':').map(item => item?.trim());
-                                const [size, originalCost, discountPrice, tiersStr] = parts;
+                        for (let i = 1; i <= 5; i++) {
+                            const size = normalizedRow[`size${i}`]?.trim();
+                            const originalCost = normalizedRow[`originalCost${i}`]?.trim();
+                            const discountPrice = normalizedRow[`discountPrice${i}`]?.trim();
+                            const discountTiersStr = normalizedRow[`discountTiers${i}`]?.trim();
+                            
+                            if (size && originalCost && discountPrice) {
                                 let discountTiers = [];
-                                if (tiersStr) {
-                                    discountTiers = tiersStr.split(',').map(tier => {
+                                if (discountTiersStr) {
+                                    discountTiers = discountTiersStr.split(',').map(tier => {
                                         const [qty, disc] = tier.split('-').map(x => x.trim());
                                         return {
                                             tierQuantity: Number(qty),
@@ -470,6 +557,7 @@ router.post('/upload', isDistributorAdmin, upload.single('file'), async (req, re
                                     }).filter(tier => !isNaN(tier.tierQuantity) && !isNaN(tier.tierDiscount));
                                     discountTiers.sort((a, b) => a.tierQuantity - b.tierQuantity);
                                 }
+                                
                                 sizes.push({
                                     size: size,
                                     originalCost: Number(originalCost),

@@ -37,6 +37,9 @@ router.use('/v2', getUserById);
 const addUser = require('./addUser');
 router.use('/add', addUser);
 
+const deleteUser = require('./deleteUser');
+router.use('/delete', deleteUser);
+
 const logout = require('./logout');
 router.use('/logout', logout);
 
