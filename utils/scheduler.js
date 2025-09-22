@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const { sendDailyCommitmentSummaries } = require('./dailyCommitmentSummary');
+const { sendDailyCommitmentStatusSummaries } = require('./dailyCommitmentStatusSummary');
 const { runDistributorReminders } = require('./distributorReminders');
 const { runMemberCommitmentReminders, checkCommitmentWindowClosingReminders } = require('./memberCommitmentReminders');
 
@@ -36,6 +37,14 @@ const initializeScheduler = () => {
     // cron.schedule('*/1 * * * *', async () => {
         console.log('Running hourly member commitment reminder checks...');
         await checkCommitmentWindowClosingReminders();
+    }, {
+        timezone: "America/Denver" // Timezone for New Mexico (Mountain Time)
+    });
+
+    // Schedule daily commitment status summary emails at 11:00 PM New Mexico Time
+    cron.schedule('0 23 * * *', async () => {
+        console.log('Running daily commitment status summary task...');
+        await sendDailyCommitmentStatusSummaries();
     }, {
         timezone: "America/Denver" // Timezone for New Mexico (Mountain Time)
     });

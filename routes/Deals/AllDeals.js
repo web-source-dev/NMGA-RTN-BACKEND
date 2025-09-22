@@ -4,6 +4,7 @@ const Deal = require('../../models/Deals');
 const Commitment = require('../../models/Commitments');
 const User = require('../../models/User');
 const Log = require('../../models/Logs');
+const CommitmentStatusChange = require('../../models/CommitmentStatusChange');
 // Send email notifications to all users
 const sendEmail = require('../../utils/email');
 const CommitmentNotificationTemplate = require('../../utils/EmailTemplates/CommitmentNotificationTemplate');
@@ -11,6 +12,39 @@ const { broadcastDealUpdate, broadcastSingleDealUpdate } = require('../../utils/
 const { isDistributorAdmin,isAdmin, getCurrentUserContext } = require('../../middleware/auth');
 const { format } = require('date-fns');
 const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+
+// Helper function to store commitment status changes for daily summary
+const storeCommitmentStatusChange = async (commitment, deal, newStatus, distributorResponse, processedBy, processedById) => {
+  try {
+    // Get distributor info
+    const distributor = await User.findById(deal.distributor);
+    
+    const statusChange = new CommitmentStatusChange({
+      commitmentId: commitment._id,
+      dealId: deal._id,
+      userId: commitment.userId,
+      dealName: deal.name,
+      distributorName: distributor.businessName || distributor.name,
+      distributorEmail: distributor.email,
+      previousStatus: commitment.status,
+      newStatus: newStatus,
+      distributorResponse: distributorResponse,
+      commitmentDetails: {
+        sizeCommitments: commitment.sizeCommitments || [],
+        totalPrice: commitment.totalPrice,
+        quantity: commitment.quantity || 0
+      },
+      processedBy: processedBy,
+      processedById: processedById
+    });
+
+    await statusChange.save();
+    console.log(`📝 Stored status change for commitment ${commitment._id}: ${commitment.status} -> ${newStatus}`);
+  } catch (error) {
+    console.error('Error storing commitment status change:', error);
+    // Don't throw error to avoid breaking the main flow
+  }
+};
 
 // Get all deals with commitments for a distributor
 router.get('/distributor-deals', isDistributorAdmin, async (req, res) => {
@@ -451,26 +485,16 @@ router.post('/bulk-approve-commitments', isDistributorAdmin, async (req, res) =>
             }
         );
 
-
+        // Store status changes for daily summary instead of sending individual emails
         for (const commitment of pendingCommitments) {
-            const userName = commitment.userId.businessName || commitment.userId.name;
-            const userEmail = commitment.userId.email;
-
-            const emailHtml = CommitmentNotificationTemplate.statusUpdate(
-                userName,
-                deal.name,
-                'approved',
-                commitment.quantity || 0,
-                commitment.totalPrice,
-                commitment.sizeCommitments
+            await storeCommitmentStatusChange(
+                commitment, 
+                deal, 
+                'approved', 
+                'Approved by distributor',
+                'distributor',
+                distributorId
             );
-
-            try {
-                await sendEmail(userEmail, `Your Commitment for ${deal.name} has been Approved`, emailHtml);
-            } catch (emailError) {
-                console.error(`Failed to send email to ${userEmail}:`, emailError);
-                // Continue with other emails even if one fails
-            }
         }
 
         // Update the deal's total sold and revenue
@@ -560,26 +584,16 @@ router.post('/bulk-decline-commitments', isDistributorAdmin, async (req, res) =>
             }
         );
 
-
+        // Store status changes for daily summary instead of sending individual emails
         for (const commitment of pendingCommitments) {
-            const userName = commitment.userId.businessName || commitment.userId.name;
-            const userEmail = commitment.userId.email;
-
-            const emailHtml = CommitmentNotificationTemplate.statusUpdate(
-                userName,
-                deal.name,
-                'declined',
-                commitment.quantity || 0,
-                commitment.totalPrice,
-                commitment.sizeCommitments
+            await storeCommitmentStatusChange(
+                commitment, 
+                deal, 
+                'declined', 
+                'Declined by distributor',
+                'distributor',
+                distributorId
             );
-
-            try {
-                await sendEmail(userEmail, `Your Commitment for ${deal.name} has been Declined`, emailHtml);
-            } catch (emailError) {
-                console.error(`Failed to send email to ${userEmail}:`, emailError);
-                // Continue with other emails even if one fails
-            }
         }
 
         const updatedDeal = await Deal.findByIdAndUpdate(dealId, {
@@ -682,26 +696,15 @@ router.post('/update-commitment-status', isDistributorAdmin, async (req, res) =>
         commitment.distributorResponse = distributorResponse;
         await commitment.save();
 
-        // Send email notification to the user
-        const userName = commitment.userId.businessName || commitment.userId.name;
-        const userEmail = commitment.userId.email;
-        const dealName = commitment.dealId.name;
-
-        const emailHtml = CommitmentNotificationTemplate.statusUpdate(
-            userName,
-            dealName,
-            status,
-            commitment.quantity || 0,
-            commitment.totalPrice,
-            commitment.sizeCommitments
+        // Store status change for daily summary instead of sending individual email
+        await storeCommitmentStatusChange(
+            commitment, 
+            deal, 
+            status, 
+            distributorResponse,
+            'distributor',
+            distributorId
         );
-
-        try {
-            await sendEmail(userEmail, `Your Commitment for ${dealName} has been ${status.charAt(0).toUpperCase() + status.slice(1)}`, emailHtml);
-        } catch (emailError) {
-            console.error(`Failed to send email to ${userEmail}:`, emailError);
-            // Continue even if email fails
-        }
 
         // If status is approved, update deal totals
         if (status === 'approved') {
@@ -989,26 +992,16 @@ router.post('/bulk-approve-commitments-admin', isAdmin, async (req, res) => {
             }
         );
 
-
+        // Store status changes for daily summary instead of sending individual emails
         for (const commitment of pendingCommitments) {
-            const userName = commitment.userId.businessName || commitment.userId.name;
-            const userEmail = commitment.userId.email;
-
-            const emailHtml = CommitmentNotificationTemplate.statusUpdate(
-                userName,
-                deal.name,
-                'approved',
-                commitment.quantity || 0,
-                commitment.totalPrice,
-                commitment.sizeCommitments
+            await storeCommitmentStatusChange(
+                commitment, 
+                deal, 
+                'approved', 
+                'Approved by admin',
+                'admin',
+                req.user.id
             );
-
-            try {
-                await sendEmail(userEmail, `Your Commitment for ${deal.name} has been Approved`, emailHtml);
-            } catch (emailError) {
-                console.error(`Failed to send email to ${userEmail}:`, emailError);
-                // Continue with other emails even if one fails
-            }
         }
 
         // Update the deal's total sold and revenue
@@ -1090,26 +1083,16 @@ router.post('/bulk-decline-commitments-admin', isAdmin, async (req, res) => {
             }
         );
 
-
+        // Store status changes for daily summary instead of sending individual emails
         for (const commitment of pendingCommitments) {
-            const userName = commitment.userId.businessName || commitment.userId.name;
-            const userEmail = commitment.userId.email;
-
-            const emailHtml = CommitmentNotificationTemplate.statusUpdate(
-                userName,
-                deal.name,
-                'declined',
-                commitment.quantity || 0,
-                commitment.totalPrice,
-                commitment.sizeCommitments
+            await storeCommitmentStatusChange(
+                commitment, 
+                deal, 
+                'declined', 
+                'Declined by admin',
+                'admin',
+                req.user.id
             );
-
-            try {
-                await sendEmail(userEmail, `Your Commitment for ${deal.name} has been Declined`, emailHtml);
-            } catch (emailError) {
-                console.error(`Failed to send email to ${userEmail}:`, emailError);
-                // Continue with other emails even if one fails
-            }
         }
 
         const updatedDeal = await Deal.findByIdAndUpdate(dealId, {

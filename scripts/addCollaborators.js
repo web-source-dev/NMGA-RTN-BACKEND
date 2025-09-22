@@ -1,6 +1,9 @@
 import mongoose from "mongoose";
-import User from "../models/User"; // Add this line to require the User model
+import User from "../models/User.js"; // Add this line to require the User model
 import bcrypt from "bcryptjs";
+
+import dotenv from "dotenv";
+dotenv.config();
 
 // Database connection
 const connectDB = async () => {
