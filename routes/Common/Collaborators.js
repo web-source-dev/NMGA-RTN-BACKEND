@@ -71,11 +71,20 @@ router.post('/', isAuthenticated, async (req, res) => {
     const invitationExpiry = new Date();
     invitationExpiry.setDate(invitationExpiry.getDate() + 7); // 7 days expiry
 
+    // Determine roleSet based on role
+    const getRoleSetForRole = (role) => {
+      if (['manager', 'deal_manager', 'commitment_manager'].includes(role)) {
+        return 2;
+      }
+      return 3;
+    };
+
     // Create new collaborator
     const newCollaborator = {
       name,
       email: email.toLowerCase(),
       role,
+      roleSet: getRoleSetForRole(role),
       password: hashedPassword,
       status: 'active',
       invitationToken,
@@ -160,7 +169,17 @@ router.put('/:collaboratorId', isAuthenticated, async (req, res) => {
     // Update collaborator fields
     if (name) collaborator.name = name;
     if (email) collaborator.email = email.toLowerCase();
-    if (role) collaborator.role = role;
+    if (role) {
+      collaborator.role = role;
+      // Update roleSet when role changes
+      const getRoleSetForRole = (role) => {
+        if (['manager', 'deal_manager', 'commitment_manager'].includes(role)) {
+          return 2;
+        }
+        return 3;
+      };
+      collaborator.roleSet = getRoleSetForRole(role);
+    }
     
     // Update password if provided
     if (password) {

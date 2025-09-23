@@ -9,6 +9,11 @@ const userSchema = new mongoose.Schema({
     enum: ["member", "distributor", "admin"],
     default: "member",
   },
+  roleSet: {
+    type: Number,
+    enum: [1, 2, 3],
+    default: 1,
+  },
   businessName: {
     type: String,
   },
@@ -107,6 +112,11 @@ const userSchema = new mongoose.Schema({
         'viewer'            // default read-only access
       ], 
       default: 'viewer' 
+    },
+    roleSet: {
+      type: Number,
+      enum: [1, 2, 3],
+      default: 3
     },
     password: String,
     status: { type: String, enum: ['active', 'restricted', 'deleted','invited','accepted'], default: 'active' },
