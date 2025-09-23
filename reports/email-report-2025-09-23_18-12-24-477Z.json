@@ -1,0 +1,24 @@
+{
+  "timestamp": "2025-09-23T18:12:21.105Z",
+  "totalUsers": 3,
+  "successful": [
+    {
+      "email": "rick.adams@rndc-usa.com",
+      "status": "success"
+    },
+    {
+      "email": "ricksanchez@sgws.com",
+      "status": "success"
+    },
+    {
+      "email": "henry.sandoval@admiralbeverage.com",
+      "status": "success"
+    }
+  ],
+  "failed": [],
+  "summary": {
+    "totalSent": 3,
+    "totalFailed": 0,
+    "successRate": 100
+  }
+}

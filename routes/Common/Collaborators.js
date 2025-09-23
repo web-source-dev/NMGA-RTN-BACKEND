@@ -5,6 +5,8 @@ const crypto = require('crypto');
 const User = require('../../models/User');
 const { isAuthenticated } = require('../../middleware/auth');
 const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const sendEmail = require('../../utils/email');
+const collaboratorCredentialsTemplate = require('../../utils/EmailTemplates/collaboratorCredentialsTemplate');
 
 // Get all collaborators for the current user
 router.get('/', isAuthenticated, async (req, res) => {
@@ -62,6 +64,9 @@ router.post('/', isAuthenticated, async (req, res) => {
       });
     }
 
+    // Store original password for email before hashing
+    const originalPassword = password;
+    
     // Hash the password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
@@ -94,6 +99,26 @@ router.post('/', isAuthenticated, async (req, res) => {
     // Add collaborator to user's collaborators array
     currentUser.collaborators.push(newCollaborator);
     await currentUser.save();
+
+    const businessName = currentUser.businessName;
+
+    // Send email to collaborator with credentials
+    try {
+      const emailContent = collaboratorCredentialsTemplate(
+        name, 
+        email, 
+        businessName, 
+        originalPassword, 
+        role, 
+        currentUser.name
+      );
+      
+      await sendEmail(email, `NMGA - Staff Member at ${businessName}`, emailContent);
+      console.log(`✅ Collaborator credentials email sent to: ${email}`);
+    } catch (emailError) {
+      console.error(`❌ Failed to send collaborator credentials email to ${email}:`, emailError.message);
+      // Don't fail the request if email fails, just log the error
+    }
 
     // Return the collaborator without password
     const collaboratorResponse = {

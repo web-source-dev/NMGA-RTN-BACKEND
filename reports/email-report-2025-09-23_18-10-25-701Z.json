@@ -1,0 +1,16 @@
+{
+  "timestamp": "2025-09-23T18:10:23.881Z",
+  "totalUsers": 1,
+  "successful": [
+    {
+      "email": "muhammadnouman72321@gmail.com",
+      "status": "success"
+    }
+  ],
+  "failed": [],
+  "summary": {
+    "totalSent": 1,
+    "totalFailed": 0,
+    "successRate": 100
+  }
+}
