@@ -3,7 +3,6 @@ const router = express.Router();
 const Deal = require('../../models/Deals');
 const User = require('../../models/User');
 const Log = require('../../models/Logs');
-const { notifyUsersByRole } = require('../Common/Notification');
 const { broadcastDealUpdate } = require('../../utils/dealUpdates');
 const { isDistributorAdmin, getCurrentUserContext } = require('../../middleware/auth');
 const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
@@ -152,30 +151,6 @@ router.post('/create', isDistributorAdmin, async (req, res) => {
     const avgSavingsPerUnit = avgOriginalCost - avgDiscountPrice;
     const avgSavingsPercentage = ((avgSavingsPerUnit / avgOriginalCost) * 100).toFixed(2);
 
-    // Create notifications for all members
-    await notifyUsersByRole('member', {
-      type: 'deal',
-      subType: 'deal_created',
-      title: 'New Deal Available',
-      message: `New deal "${name}" is now available from ${user.name}. Average discount: ${avgSavingsPercentage}%`,
-      relatedId: newDeal._id,
-      onModel: 'Deal',
-      senderId: distributor,
-      priority: 'high'
-    });
-
-    // Notify admin about new deal
-    await notifyUsersByRole('admin', {
-      type: 'deal',
-      subType: 'deal_created',
-      title: 'New Deal Created',
-      message: `Distributor ${user.name} has created a new deal "${name}" with ${sizes.length} size options`,
-      relatedId: newDeal._id,
-      onModel: 'Deal',
-      senderId: distributor,
-      priority: 'medium'
-    });
-
     // Create log entry with admin impersonation details if applicable
     if (isImpersonating) {
       await Log.create({
@@ -208,12 +183,6 @@ router.post('/create', isDistributorAdmin, async (req, res) => {
 
     res.status(201).json(response);
 
-    // Fetch all members
-    const members = await User.find({ 
-        role: 'member',
-        isBlocked: false,
-        email: { $exists: true, $ne: '' }
-    }).select('name phone email').lean();
   } catch (error) {
     console.error('Error creating deal:', error);
     const { currentUser, originalUser, isImpersonating } = getCurrentUserContext(req);

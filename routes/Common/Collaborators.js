@@ -248,22 +248,25 @@ router.delete('/:collaboratorId', isAuthenticated, async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Find and remove the collaborator
+    // Find the collaborator
     const collaborator = user.collaborators.id(collaboratorId);
     if (!collaborator) {
       return res.status(404).json({ message: 'Collaborator not found' });
     }
 
-    // Instead of deleting, mark as deleted
-    collaborator.status = 'deleted';
+    // Store collaborator details for logging before deletion
+    const collaboratorDetails = {
+      name: collaborator.name,
+      role: collaborator.role,
+      email: collaborator.email
+    };
+
+    // Actually remove the collaborator from the array
+    user.collaborators.pull(collaboratorId);
     await user.save();
 
     // Log the action
-    await logCollaboratorAction(req, 'delete_collaborator', 'collaborator', {
-      collaboratorName: collaborator.name,
-      collaboratorRole: collaborator.role,
-      collaboratorEmail: collaborator.email
-    });
+    await logCollaboratorAction(req, 'delete_collaborator', 'collaborator', collaboratorDetails);
 
     res.json({ message: 'Collaborator deleted successfully' });
   } catch (error) {
