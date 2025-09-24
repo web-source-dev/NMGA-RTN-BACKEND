@@ -97,6 +97,10 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "User"
   },
+  lastLogin: {
+    type: Date,
+    default: null
+  },
   collaborators: [{
     name: String,
     email: String,
@@ -121,7 +125,11 @@ const userSchema = new mongoose.Schema({
     password: String,
     status: { type: String, enum: ['active', 'restricted', 'deleted','invited','accepted'], default: 'active' },
     invitationToken: String,
-    invitationExpiry: Date
+    invitationExpiry: Date,
+    lastLogin: {
+      type: Date,
+      default: null
+    }
   }],
 }, {
   timestamps: true

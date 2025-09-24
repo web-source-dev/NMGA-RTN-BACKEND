@@ -53,6 +53,15 @@ router.post('/', async (req, res) => {
                 return res.status(400).json({ message: 'Invalid email or password' });
             }
 
+            // Update collaborator's last login timestamp
+            const collaboratorIndex = mainUser.collaborators.findIndex(
+                collab => collab.email.toLowerCase() === email.toLowerCase()
+            );
+            if (collaboratorIndex !== -1) {
+                mainUser.collaborators[collaboratorIndex].lastLogin = new Date();
+                await mainUser.save();
+            }
+
             // Create token for collaborator with main user's role and collaborator's role
             const tokenPayload = {
                 id: mainUser._id, // Main user's ID
@@ -191,6 +200,10 @@ router.post('/', async (req, res) => {
         }
 
         const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: '1y' });
+
+        // Update user's last login timestamp
+        user.lastLogin = new Date();
+        await user.save();
 
         if (user.phone) {
             const userInfo = {
