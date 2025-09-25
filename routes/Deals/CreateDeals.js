@@ -18,6 +18,7 @@ router.post('/create', isDistributorAdmin, async (req, res) => {
       description,
       sizes,
       category,
+      customCategory,
       dealEndsAt,
       dealStartAt,
       commitmentStartAt,
@@ -49,6 +50,13 @@ router.post('/create', isDistributorAdmin, async (req, res) => {
       if (!sizeObj.size || !sizeObj.originalCost || !sizeObj.discountPrice) {
         return res.status(400).json({
           message: 'Each size must include size name, original cost, and discount price'
+        });
+      }
+
+      // Validate custom size if provided
+      if (sizeObj.size === 'Custom' && !sizeObj.customSize) {
+        return res.status(400).json({
+          message: 'Custom size must be specified when "Custom" is selected'
         });
       }
 
@@ -118,12 +126,26 @@ router.post('/create', isDistributorAdmin, async (req, res) => {
       });
     }
 
+    // Process sizes to handle custom sizes
+    const processedSizes = sizes.map(sizeObj => {
+      if (sizeObj.size === 'Custom' && sizeObj.customSize) {
+        return {
+          ...sizeObj,
+          size: sizeObj.customSize
+        };
+      }
+      return sizeObj;
+    });
+
+    // Determine final category
+    const finalCategory = category === 'Custom' && customCategory ? customCategory : category;
+
     // Create the deal with initial statistics
     const newDeal = await Deal.create({
       name,
       description,
-      sizes,
-      category,
+      sizes: processedSizes,
+      category: finalCategory,
       dealEndsAt,
       dealStartAt,
       commitmentStartAt,

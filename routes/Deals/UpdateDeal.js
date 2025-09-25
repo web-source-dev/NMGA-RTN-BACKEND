@@ -38,6 +38,13 @@ router.put('/:dealId', isDistributorAdmin, async (req, res) => {
           });
         }
 
+        // Validate custom size if provided
+        if (sizeObj.size === 'Custom' && !sizeObj.customSize) {
+          return res.status(400).json({
+            message: 'Custom size must be specified when "Custom" is selected'
+          });
+        }
+
         // Validate price relationship for each size
         if (Number(sizeObj.discountPrice) >= Number(sizeObj.originalCost)) {
           return res.status(400).json({
@@ -90,6 +97,24 @@ router.put('/:dealId', isDistributorAdmin, async (req, res) => {
           }
         }
       }
+    }
+
+    // Process sizes to handle custom sizes
+    if (updateData.sizes) {
+      updateData.sizes = updateData.sizes.map(sizeObj => {
+        if (sizeObj.size === 'Custom' && sizeObj.customSize) {
+          return {
+            ...sizeObj,
+            size: sizeObj.customSize
+          };
+        }
+        return sizeObj;
+      });
+    }
+
+    // Handle custom category
+    if (updateData.category === 'Custom' && updateData.customCategory) {
+      updateData.category = updateData.customCategory;
     }
 
     // Ensure images array is properly handled
