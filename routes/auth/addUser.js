@@ -61,6 +61,20 @@ router.post('/import-users', async (req, res) => {
 router.post('/add-user', async (req, res) => {
     const { name, email, role, businessName } = req.body;
     try {
+        // Check if email already exists as a main user
+        const existingUser = await User.findOne({ email: email.toLowerCase() });
+        if (existingUser) {
+            return res.status(400).json({ message: 'Email already exists' });
+        }
+
+        // Check if email exists as a collaborator
+        const userWithCollaborator = await User.findOne({
+            'collaborators.email': email.toLowerCase()
+        });
+        if (userWithCollaborator) {
+            return res.status(400).json({ message: 'Email already exists' });
+        }
+
         const user = new User({ name, email, role, businessName });
         await user.save();
         

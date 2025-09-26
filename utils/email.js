@@ -4,12 +4,45 @@ const User = require('../models/User');
 const { isFeatureEnabled } = require('../config/features');
 
 const sendEmail = async (to, subject, html) => {
-  // Check if email feature is enabled
+  // Check if email feature is disabled
   if (!(await isFeatureEnabled('EMAIL'))) {
-    console.log('📧 Email feature is disabled. Email would have been sent to:', to);
-    console.log('📧 Subject:', subject);
-    console.log('📧 Content length:', html?.length || 0);
-    return { messageId: 'disabled', to: to, subject: subject }; // Return mock success response
+    const timestamp = new Date().toISOString();
+    const primaryEmails = Array.isArray(to) ? to : [to];
+    
+    // Collect all additional emails even when disabled
+    const allEmails = [...primaryEmails];
+    for (const email of primaryEmails) {
+      const user = await User.findOne({ email: email.toLowerCase() });
+      if (user && user.additionalEmails && user.additionalEmails.length > 0) {
+        const additionalEmails = user.additionalEmails.map(e => e.email);
+        allEmails.push(...additionalEmails);
+      }
+    }
+    const uniqueEmails = [...new Set(allEmails)];
+    
+    console.log('📧 Email feature is disabled. Email would have been sent:', {
+      to: uniqueEmails,
+      subject,
+      contentLength: html?.length || 0,
+      timestamp
+    });
+
+    // Log disabled email attempt
+    await Log.create({ 
+      message: `🚫 EMAIL FEATURE DISABLED
+        📅 Time: ${timestamp}
+        👥 Recipients: ${uniqueEmails.join(', ')}
+        📧 Primary Emails: ${primaryEmails.join(', ')}
+        📧 Additional Emails: ${uniqueEmails.filter(email => !primaryEmails.includes(email)).join(', ') || 'None'}
+        📝 Subject: ${subject}
+        📊 Content Length: ${html?.length || 0} characters
+        🏢 Sender: New Mexico Grocers Association
+        ⚠️ Status: Feature Disabled - Email Not Sent`, 
+      type: 'warning', 
+      user_id: null 
+    });
+    
+    return { messageId: 'disabled', to: uniqueEmails, subject: subject }; // Return mock success response
   }
 
   // Convert single email to array for consistent handling
@@ -30,11 +63,15 @@ const sendEmail = async (to, subject, html) => {
   // Remove duplicates
   const uniqueEmails = [...new Set(allEmails)];
   
-  console.log('Attempting to send email:', {
+  const timestamp = new Date().toISOString();
+  console.log('📧 Attempting to send email:', {
+    timestamp,
     to: uniqueEmails,
+    primaryEmails: primaryEmails,
+    additionalEmails: uniqueEmails.filter(email => !primaryEmails.includes(email)),
     subject,
-    // Don't log the full HTML for security
-    htmlLength: html?.length
+    htmlLength: html?.length,
+    sender: sendSmtpEmail.sender.email
   });
 
   // Configure Brevo API
@@ -53,24 +90,50 @@ const sendEmail = async (to, subject, html) => {
 
   try {
     const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    const timestamp = new Date().toISOString();
 
     console.log('Email sent successfully:', {
       messageId: result.messageId,
       to: uniqueEmails,
-      subject
+      subject,
+      timestamp,
+      sender: sendSmtpEmail.sender.email
     });
 
+    // Create detailed success log
     await Log.create({ 
-      message: `Email sent to ${uniqueEmails.join(', ')}`, 
+      message: `📧 EMAIL SENT SUCCESSFULLY
+        📅 Time: ${timestamp}
+        📨 Message ID: ${result.messageId}
+        👥 Recipients: ${uniqueEmails.join(', ')}
+        📧 Primary Emails: ${primaryEmails.join(', ')}
+        📧 Additional Emails: ${uniqueEmails.filter(email => !primaryEmails.includes(email)).join(', ') || 'None'}
+        📝 Subject: ${subject}
+        📊 Content Length: ${html?.length || 0} characters
+        🏢 Sender: ${sendSmtpEmail.sender.name} (${sendSmtpEmail.sender.email})
+        ✅ Status: Delivered`, 
       type: 'success', 
       user_id: null 
     });
 
     return result;
   } catch (error) {
+    const timestamp = new Date().toISOString();
     console.error('Failed to send email:', error);
+    
+    // Create detailed error log
     await Log.create({ 
-      message: `Failed to send email to ${uniqueEmails.join(', ')}: ${error.message}`, 
+      message: `❌ EMAIL SEND FAILED
+        📅 Time: ${timestamp}
+        👥 Recipients: ${uniqueEmails.join(', ')}
+        📧 Primary Emails: ${primaryEmails.join(', ')}
+        📧 Additional Emails: ${uniqueEmails.filter(email => !primaryEmails.includes(email)).join(', ') || 'None'}
+        📝 Subject: ${subject}
+        📊 Content Length: ${html?.length || 0} characters
+        🏢 Sender: ${sendSmtpEmail.sender.name} (${sendSmtpEmail.sender.email})
+        ❌ Error: ${error.message}
+        🔍 Error Code: ${error.code || 'Unknown'}
+        📋 Error Details: ${JSON.stringify(error.response?.data || {})}`, 
       type: 'error', 
       user_id: null 
     });

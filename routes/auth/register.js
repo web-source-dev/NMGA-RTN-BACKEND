@@ -25,6 +25,14 @@ router.post('/', async (req, res) => {
         if (existingUser) {
             return res.status(400).json({ message: 'Email already exists' });
         }
+
+        // Check if email exists as a collaborator
+        const userWithCollaborator = await User.findOne({
+            'collaborators.email': email.toLowerCase()
+        });
+        if (userWithCollaborator) {
+            return res.status(400).json({ message: 'Email already exists' });
+        }
         const loginKey = await generateUniqueLoginKey(User);
         const hashedPassword = await bcrypt.hash(password, 10);
 

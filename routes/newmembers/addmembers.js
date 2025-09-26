@@ -42,6 +42,14 @@ router.post('/add', isMemberAdmin, async (req, res) => {
       return res.status(400).json({ success: false, message: 'User with this email already exists' });
     }
     
+    // Check if email exists as a collaborator
+    const userWithCollaborator = await User.findOne({
+      'collaborators.email': email.toLowerCase()
+    });
+    if (userWithCollaborator) {
+      return res.status(400).json({ success: false, message: 'Email already exists' });
+    }
+    
     // Generate reset token for password creation
     const token = crypto.randomBytes(20).toString('hex');
     const resetPasswordExpires = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
