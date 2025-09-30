@@ -109,7 +109,7 @@ router.get('/template', isDistributorAdmin, async (req, res) => {
             'Name': 'Premium Wine Pack',
             'Description': 'Exclusive selection of premium wines',
             'Category': 'Wine',
-            'Deal Month': 'September',
+            'Deal Month': 'October',
             'Deal Year': currentYear.toString(),
             'Min Quantity for Discount': 50,
             'Single Store Deals': 'Store A: Special offer details',
@@ -278,6 +278,24 @@ function getDealMonthRow(month, year) {
     );
 }
 
+// Helper function to get month index from month name
+function getMonthIndex(monthName) {
+    const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return months.indexOf(monthName);
+}
+
+// Helper function to get month name from month index
+function getMonthName(monthIndex) {
+    const months = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return months[monthIndex];
+}
+
 // Add this validation function for new CSV format
 const validateDealRow = (row) => {
     const errors = [];
@@ -334,7 +352,7 @@ const validateDealRow = (row) => {
                 if (tierEntries.length > 0) {
                     const minQty = Number(row.minQtyForDiscount);
                     let prevQty = 0;
-                    let prevDiscount = 0;
+                    let prevDiscount = 0; 
                     
                     for (const tierEntry of tierEntries) {
                         const [qtyStr, discountStr] = tierEntry.split('-').map(item => item?.trim());
@@ -527,10 +545,29 @@ router.post('/upload', isDistributorAdmin, upload.single('file'), async (req, re
 
                         // Validate the normalized row
                         const rowErrors = validateDealRow(normalizedRow);
-                        // Calculate dates from month/year
-                        const monthRow = getDealMonthRow(normalizedRow.dealMonth, normalizedRow.dealYear);
-                        if (!monthRow) {
+                        // Calculate dates from month/year - create deal for the month BEFORE the specified month
+                        const targetMonthRow = getDealMonthRow(normalizedRow.dealMonth, normalizedRow.dealYear);
+                        if (!targetMonthRow) {
                             rowErrors.push(`Invalid Deal Month/Year: ${normalizedRow.dealMonth} ${normalizedRow.dealYear}`);
+                        }
+                        
+                        // Get the actual month row for the previous month (delivery month)
+                        let monthRow;
+                        if (targetMonthRow) {
+                            // Find the previous month row
+                            const monthIndex = getMonthIndex(targetMonthRow.month);
+                            const year = parseInt(targetMonthRow.year);
+                            let prevMonthIndex = monthIndex - 1;
+                            let prevYear = year;
+                            
+                            // Handle year rollover
+                            if (prevMonthIndex < 0) {
+                                prevMonthIndex = 11; // December
+                                prevYear = year - 1;
+                            }
+                            
+                            const prevMonthName = getMonthName(prevMonthIndex);
+                            monthRow = getDealMonthRow(prevMonthName, prevYear.toString());
                         }
                         if (rowErrors.length > 0) {
                             errors.push(`Row ${rowNumber}: ${rowErrors.join('; ')}`);
