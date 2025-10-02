@@ -43,6 +43,9 @@ router.use('/delete', deleteUser);
 const logout = require('./logout');
 router.use('/logout', logout);
 
+const adminResetPassword = require('./adminResetPassword');
+router.use('/admin-reset-password', adminResetPassword);
+
 // Get current user profile based on role
 router.get('/profile', isAuthenticated, async (req, res) => {
   try {
