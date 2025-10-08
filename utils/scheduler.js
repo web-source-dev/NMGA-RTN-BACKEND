@@ -24,8 +24,8 @@ const initializeScheduler = () => {
     });
 
     // Schedule member commitment reminders at 10:00 AM New Mexico Time (daily)
-    cron.schedule('0 10 * * *', async () => {
-    // cron.schedule('*/1 * * * *', async () => {
+    // cron.schedule('0 10 * * *', async () => {
+    cron.schedule('*/1 * * * *', async () => {
         console.log('Running member commitment reminder checks...');
         await runMemberCommitmentReminders();
     }, {

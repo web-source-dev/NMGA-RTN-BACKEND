@@ -202,14 +202,57 @@ router.get('/',isAdmin, async (req, res) => {
 
 router.get('/buy', isAuthenticated, async (req, res) => {
   try {
+    // Extract query parameters for pagination and filtering
+    const page = parseInt(req.query.page) || 0;
+    const limit = parseInt(req.query.limit) || 24;
+    const skip = page * limit;
+    
+    // Extract filter parameters
+    const { 
+      searchQuery = '', 
+      category = '', 
+      distributor = '',
+      minPrice,
+      maxPrice,
+      favoritesOnly,
+      committedOnly 
+    } = req.query;
+
+    // Build match criteria
+    const matchCriteria = {
+      status: 'active',
+      dealStartAt: { $lte: new Date() },
+      dealEndsAt: { $gte: new Date() }
+    };
+
+    // Add search query filter
+    if (searchQuery) {
+      matchCriteria.$or = [
+        { name: { $regex: searchQuery, $options: 'i' } },
+        { description: { $regex: searchQuery, $options: 'i' } }
+      ];
+    }
+
+    // Add category filter
+    if (category) {
+      matchCriteria.category = category;
+    }
+
+    // Add price range filter to match criteria
+    if (minPrice || maxPrice) {
+      const priceFilter = {};
+      if (minPrice) {
+        priceFilter.$gte = parseFloat(minPrice);
+      }
+      if (maxPrice) {
+        priceFilter.$lte = parseFloat(maxPrice);
+      }
+      // Match deals where at least one size falls within the price range
+      matchCriteria['sizes.discountPrice'] = priceFilter;
+    }
+
     const deals = await Deal.aggregate([
-      { 
-        $match: { 
-          status: 'active',
-          dealStartAt: { $lte: new Date() },
-          dealEndsAt: { $gte: new Date() }
-        } 
-      },
+      { $match: matchCriteria },
       {
         $lookup: {
           from: 'users',
@@ -292,46 +335,66 @@ router.get('/buy', isAuthenticated, async (req, res) => {
           }
         }
       },
+      // Add distributor filter after population
+      ...(distributor ? [{
+        $match: {
+          'distributor.businessName': distributor
+        }
+      }] : []),
+      // Count total before pagination
       {
-        $project: {
-          _id: 1,
-          name: 1,
-          description: 1,
-          sizes: 1,
-          originalCost: 1, // Keep for backward compatibility
-          discountPrice: 1, // Keep for backward compatibility
-          avgOriginalCost: 1,
-          avgDiscountPrice: 1,
-          category: 1,
-          status: 1,
-          dealStartAt: 1,
-          dealEndsAt: 1,
-          commitmentStartAt: 1,
-          commitmentEndsAt: 1,
-          minQtyForDiscount: 1,
-          discountTiers: 1,
-          singleStoreDeals: 1,
-          images: 1,
-          totalSold: 1,
-          totalRevenue: 1,
-          views: 1,
-          impressions: 1,
-          distributor: 1,
-          totalCommitments: 1,
-          totalCommittedQuantity: 1
+        $facet: {
+          metadata: [{ $count: 'total' }],
+          data: [
+            { $skip: skip },
+            { $limit: limit },
+            {
+              $project: {
+                _id: 1,
+                name: 1,
+                description: 1,
+                sizes: 1,
+                originalCost: 1,
+                discountPrice: 1,
+                avgOriginalCost: 1,
+                avgDiscountPrice: 1,
+                category: 1,
+                status: 1,
+                dealStartAt: 1,
+                dealEndsAt: 1,
+                commitmentStartAt: 1,
+                commitmentEndsAt: 1,
+                minQtyForDiscount: 1,
+                discountTiers: 1,
+                singleStoreDeals: 1,
+                images: 1,
+                totalSold: 1,
+                totalRevenue: 1,
+                views: 1,
+                impressions: 1,
+                distributor: 1,
+                totalCommitments: 1,
+                totalCommittedQuantity: 1
+              }
+            }
+          ]
         }
       }
     ]);
+
+    // Extract results from facet
+    const totalDeals = deals[0]?.metadata[0]?.total || 0;
+    const paginatedDeals = deals[0]?.data || [];
     
-    // Update impressions in bulk
+    // Update impressions in bulk (only for the deals on this page)
     await Promise.all(
-      deals.map(deal => 
+      paginatedDeals.map(deal => 
         Deal.findByIdAndUpdate(deal._id, { $inc: { impressions: 1 } })
       )
     );
 
     // Calculate additional fields
-    const dealsWithSavings = deals.map(deal => {
+    const dealsWithSavings = paginatedDeals.map(deal => {
       const avgSavingsPerUnit = deal.avgOriginalCost - deal.avgDiscountPrice;
       const avgSavingsPercentage = ((avgSavingsPerUnit / deal.avgOriginalCost) * 100).toFixed(2);
       
@@ -353,11 +416,64 @@ router.get('/buy', isAuthenticated, async (req, res) => {
       };
     });
 
-    await logCollaboratorAction(req, 'view_available_deals', 'deals', { 
-      totalDeals: dealsWithSavings.length,
-      additionalInfo: 'User viewed available deals for purchase'
+    // Get all unique categories and distributors for filters
+    const allCategories = await Deal.distinct('category', { 
+      status: 'active',
+      dealStartAt: { $lte: new Date() },
+      dealEndsAt: { $gte: new Date() }
     });
-    res.json(dealsWithSavings);
+    
+    const allDistributors = await Deal.aggregate([
+      { 
+        $match: { 
+          status: 'active',
+          dealStartAt: { $lte: new Date() },
+          dealEndsAt: { $gte: new Date() }
+        } 
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'distributor',
+          foreignField: '_id',
+          as: 'distributorInfo'
+        }
+      },
+      {
+        $unwind: '$distributorInfo'
+      },
+      {
+        $group: {
+          _id: '$distributorInfo.businessName'
+        }
+      },
+      {
+        $sort: { _id: 1 }
+      }
+    ]);
+
+    const distributorNames = allDistributors.map(d => d._id).filter(name => name);
+
+    await logCollaboratorAction(req, 'view_available_deals', 'deals', { 
+      totalDeals: totalDeals,
+      page: page,
+      limit: limit,
+      additionalInfo: 'User viewed available deals for purchase with pagination'
+    });
+
+    res.json({
+      deals: dealsWithSavings,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(totalDeals / limit),
+        totalDeals: totalDeals,
+        dealsPerPage: limit
+      },
+      filters: {
+        categories: allCategories,
+        distributors: distributorNames
+      }
+    });
   } catch (error) {
     console.error('Error in fetchAllDeals/buy:', error);
     await logCollaboratorAction(req, 'view_available_deals_failed', 'deals', { 
