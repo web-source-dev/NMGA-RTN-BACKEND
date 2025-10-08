@@ -62,17 +62,6 @@ const sendEmail = async (to, subject, html) => {
   
   // Remove duplicates
   const uniqueEmails = [...new Set(allEmails)];
-  
-  const timestamp = new Date().toISOString();
-  console.log('📧 Attempting to send email:', {
-    timestamp,
-    to: uniqueEmails,
-    primaryEmails: primaryEmails,
-    additionalEmails: uniqueEmails.filter(email => !primaryEmails.includes(email)),
-    subject,
-    htmlLength: html?.length,
-    sender: sendSmtpEmail.sender.email
-  });
 
   // Configure Brevo API
   const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
@@ -87,6 +76,17 @@ const sendEmail = async (to, subject, html) => {
     name: "New Mexico Grocers Association",
     email: process.env.BREVO_EMAIL_USER
   };
+  
+  const timestamp = new Date().toISOString();
+  console.log('📧 Attempting to send email:', {
+    timestamp,
+    to: uniqueEmails,
+    primaryEmails: primaryEmails,
+    additionalEmails: uniqueEmails.filter(email => !primaryEmails.includes(email)),
+    subject,
+    htmlLength: html?.length,
+    sender: sendSmtpEmail.sender.email
+  });
 
   try {
     const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
