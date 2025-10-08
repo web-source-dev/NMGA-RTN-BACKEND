@@ -1038,14 +1038,17 @@ router.put('/commitments/:commitmentId/modify-sizes', isMemberAdmin, async (req,
     
     const { sizeCommitments } = req.body;
     
-    if (!sizeCommitments || !Array.isArray(sizeCommitments) || sizeCommitments.length === 0) {
+    if (!sizeCommitments || !Array.isArray(sizeCommitments)) {
       return res.status(400).json({ message: 'Size commitments are required and must be an array' });
     }
 
-    // Validate each size commitment
-    for (const size of sizeCommitments) {
-      if (!size.size || !size.quantity || size.quantity <= 0 || !size.pricePerUnit) {
-        return res.status(400).json({ message: 'Each size must have a size, quantity greater than 0, and price per unit' });
+    // Filter out sizes with 0 quantity
+    const nonZeroSizes = sizeCommitments.filter(size => size.quantity > 0);
+    
+    // Validate each non-zero size commitment
+    for (const size of nonZeroSizes) {
+      if (!size.size || !size.pricePerUnit) {
+        return res.status(400).json({ message: 'Each size must have a size and price per unit' });
       }
     }
 
@@ -1083,8 +1086,32 @@ router.put('/commitments/:commitmentId/modify-sizes', isMemberAdmin, async (req,
       }
     }
 
-    // Verify all sizes exist in the deal
-    for (const sizeCommit of sizeCommitments) {
+    // If all sizes are 0, cancel the commitment instead of updating
+    if (nonZeroSizes.length === 0) {
+      commitment.status = 'cancelled';
+      await commitment.save();
+      
+      await Log.create({
+        message: `Member ${currentUser.name} (${currentUser.email}) cancelled commitment ${commitment._id} by setting all sizes to 0`,
+        type: 'info',
+        user_id: userId
+      });
+      
+      await logCollaboratorAction(req, 'cancel_commitment_via_modification', 'commitment', { 
+        commitmentId: commitment._id,
+        dealName: commitment.dealId.name,
+        additionalInfo: `Cancelled commitment by setting all sizes to 0`
+      });
+      
+      return res.json({
+        message: 'All sizes set to 0. Commitment has been cancelled.',
+        commitment,
+        cancelled: true
+      });
+    }
+
+    // Verify all non-zero sizes exist in the deal
+    for (const sizeCommit of nonZeroSizes) {
       const matchingDealSize = commitment.dealId.sizes.find(s => s.size === sizeCommit.size);
       if (!matchingDealSize) {
         return res.status(400).json({
@@ -1094,12 +1121,12 @@ router.put('/commitments/:commitmentId/modify-sizes', isMemberAdmin, async (req,
     }
 
     // Calculate total price
-    const totalPrice = sizeCommitments.reduce((sum, size) => {
+    const totalPrice = nonZeroSizes.reduce((sum, size) => {
       return sum + (size.quantity * size.pricePerUnit);
     }, 0);
 
     // Check if discount tier should be applied
-    const totalQuantity = sizeCommitments.reduce((sum, size) => sum + size.quantity, 0);
+    const totalQuantity = nonZeroSizes.reduce((sum, size) => sum + size.quantity, 0);
     
     let appliedDiscountTier = null;
     if (commitment.dealId.discountTiers && commitment.dealId.discountTiers.length > 0) {
@@ -1123,19 +1150,22 @@ router.put('/commitments/:commitmentId/modify-sizes', isMemberAdmin, async (req,
       finalPrice = totalPrice * (1 - discountRate);
       
       // Apply discount to each size
-      for (const size of sizeCommitments) {
+      for (const size of nonZeroSizes) {
         size.pricePerUnit = size.pricePerUnit * (1 - discountRate);
         size.totalPrice = size.quantity * size.pricePerUnit;
       }
     } else {
       // Calculate total price for each size
-      for (const size of sizeCommitments) {
+      for (const size of nonZeroSizes) {
         size.totalPrice = size.quantity * size.pricePerUnit;
       }
     }
 
-    // Update commitment
-    commitment.sizeCommitments = sizeCommitments;
+    // Count how many sizes were removed (had 0 quantity)
+    const removedSizesCount = sizeCommitments.length - nonZeroSizes.length;
+
+    // Update commitment with only non-zero sizes
+    commitment.sizeCommitments = nonZeroSizes;
     commitment.totalPrice = finalPrice;
     commitment.appliedDiscountTier = appliedDiscountTier;
     
@@ -1144,11 +1174,12 @@ router.put('/commitments/:commitmentId/modify-sizes', isMemberAdmin, async (req,
     // Log the action
     await logCollaboratorAction(req, 'modify_commitment_sizes', 'commitment', { 
       commitmentId: commitment._id,
-      sizesCount: sizeCommitments.length,
+      sizesCount: nonZeroSizes.length,
+      removedSizesCount: removedSizesCount,
       totalQuantity: totalQuantity,
       finalPrice: finalPrice,
       appliedDiscountTier: appliedDiscountTier,
-      additionalInfo: `Modified commitment sizes: ${sizeCommitments.length} sizes, ${totalQuantity} units, $${finalPrice.toFixed(2)}`
+      additionalInfo: `Modified commitment sizes: ${nonZeroSizes.length} sizes, ${totalQuantity} units, $${finalPrice.toFixed(2)}${removedSizesCount > 0 ? `, removed ${removedSizesCount} size(s) with 0 quantity` : ''}`
     });
 
     res.json({
