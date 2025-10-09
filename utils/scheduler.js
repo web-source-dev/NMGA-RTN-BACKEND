@@ -15,8 +15,8 @@ const initializeScheduler = () => {
     });
 
     // Schedule distributor reminders at 9:00 AM New Mexico Time (daily)
-    // cron.schedule('0 9 * * *', async () => {
-    cron.schedule('*/1 * * * *', async () => {
+    cron.schedule('0 9 * * *', async () => {
+    // cron.schedule('*/1 * * * *', async () => {
         console.log('Running distributor reminder checks...');
         await runDistributorReminders();
     }, {
