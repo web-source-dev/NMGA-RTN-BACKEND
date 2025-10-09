@@ -76,14 +76,6 @@ const sendEmail = async (to, subject, html) => {
     const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
     const timestamp = new Date().toISOString();
 
-    console.log('Email sent successfully:', {
-      messageId: result.messageId,
-      to: uniqueEmails,
-      subject,
-      timestamp,
-      sender: sendSmtpEmail.sender.email
-    });
-
     return result;
   } catch (error) {
     const timestamp = new Date().toISOString();

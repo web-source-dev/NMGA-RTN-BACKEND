@@ -102,7 +102,6 @@ const sendDailyCommitmentStatusSummaries = async () => {
         );
 
         emailsSent++;
-        console.log(`✅ Summary email sent successfully to ${user.email}`);
 
       } catch (error) {
         emailsFailed++;
