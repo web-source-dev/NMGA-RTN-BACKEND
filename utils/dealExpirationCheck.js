@@ -79,6 +79,14 @@ const checkDealExpiration = async () => {
 
       const notificationKey = `notification_${interval.days}`;
       
+      // Track statistics for this interval
+      let intervalEmailsSent = 0;
+      let intervalEmailsFailed = 0;
+      let intervalEmailsSkipped = 0;
+      const intervalSentToEmails = [];
+      const intervalFailedEmails = [];
+      const intervalSkippedEmails = [];
+      
       // Group deals by users who need to be notified
       const userDealsMap = new Map();
       
@@ -97,6 +105,12 @@ const checkDealExpiration = async () => {
               userDealsMap.set(user._id.toString(), { user, deals: [] });
             }
             userDealsMap.get(user._id.toString()).deals.push(deal);
+          } else {
+            // User was already notified about this deal
+            if (!intervalSkippedEmails.includes(user.email)) {
+              intervalEmailsSkipped++;
+              intervalSkippedEmails.push(user.email);
+            }
           }
         });
       }
@@ -139,6 +153,10 @@ const checkDealExpiration = async () => {
             await deal.save();
           }
           
+          // Create unique tag for this notification (user + time interval + date)
+          const today = new Date();
+          const uniqueTag = `expiration-${timeRemaining.replace(/\s+/g, '-')}-${today.getFullYear()}-${today.getMonth() + 1}-${today.getDate()}`;
+          
           await logSystemAction('deal_expiration_notification_sent', 'notification', {
             message: `${timeRemaining} expiration notification sent to ${user.name} for ${totalDeals} deal(s)`,
             userId: user._id,
@@ -149,8 +167,11 @@ const checkDealExpiration = async () => {
             hasMoreDeals,
             timeRemaining,
             severity: 'low',
-            tags: ['notification', 'deal-expiration', 'automated']
+            tags: ['notification', 'deal-expiration', 'automated', uniqueTag]
           });
+
+          intervalEmailsSent++;
+          intervalSentToEmails.push(user.email);
           
           // Send SMS if phone number exists (still sending individual SMS for better readability)
           if (user.phone) {
@@ -200,6 +221,9 @@ const checkDealExpiration = async () => {
           }
 
         } catch (error) {
+          intervalEmailsFailed++;
+          intervalFailedEmails.push(user.email);
+
           await logSystemAction('batch_expiration_notification_failed', 'notification', {
             message: `Failed to send ${interval.label} batch expiration notification to ${user.email}`,
             userId: user._id,
@@ -217,6 +241,25 @@ const checkDealExpiration = async () => {
           console.error('Batch notification error:', error);
         }
       }
+
+      // Log summary for this interval
+      const intervalSummaryMessage = `Deal expiration ${interval.label} notifications completed. Total Users: ${userDealsMap.size}, Total Deals: ${dealsToNotify.length}, Sent: ${intervalEmailsSent}, Failed: ${intervalEmailsFailed}, Skipped: ${intervalEmailsSkipped}`;
+      console.log(`📊 ${intervalSummaryMessage}`);
+      
+      await logSystemAction('deal_expiration_notifications_summary', 'notification', {
+        message: intervalSummaryMessage,
+        timeRemaining: interval.label,
+        totalUsers: userDealsMap.size,
+        totalDeals: dealsToNotify.length,
+        emailsSent: intervalEmailsSent,
+        emailsFailed: intervalEmailsFailed,
+        emailsSkipped: intervalEmailsSkipped,
+        sentToEmails: intervalSentToEmails,
+        failedEmails: intervalFailedEmails,
+        skippedEmails: intervalSkippedEmails,
+        severity: intervalEmailsFailed > 0 ? 'medium' : 'low',
+        tags: ['notification', 'deal-expiration', 'automated', 'summary']
+      });
     }
 
     // Handle expired deals - only update status without sending notifications

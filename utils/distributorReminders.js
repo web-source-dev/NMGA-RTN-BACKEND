@@ -1,6 +1,7 @@
 const Deal = require('../models/Deals');
 const User = require('../models/User');
 const Commitment = require('../models/Commitments');
+const Log = require('../models/Logs');
 const sendEmail = require('./email');
 const { sendSMS } = require('./message');
 const DistributorReminderTemplate = require('./EmailTemplates/DistributorReminderTemplate');
@@ -51,10 +52,39 @@ const checkPostingDeadlineReminders = async () => {
       return;
     }
 
+    // Track statistics
+    let emailsSent = 0;
+    let emailsFailed = 0;
+    let emailsSkipped = 0;
+    const sentToEmails = [];
+    const failedEmails = [];
+    const skippedEmails = [];
+
     // Send reminders to all distributors
     for (const distributor of distributors) {
       try {
         const distributorName = distributor.businessName || distributor.name;
+        
+        // Check if this distributor has already received this reminder for this month/year
+        // Use unique tag for duplicate detection (includes daysUntilDeadline to differentiate 5, 3, 1 day reminders)
+        const uniqueTag = `posting-${daysUntilDeadline}day-${deliveryMonth.month}-${deliveryMonth.year}`;
+        const twentyDaysAgo = new Date();
+        twentyDaysAgo.setDate(twentyDaysAgo.getDate() - 20);
+        
+        const existingReminder = await Log.findOne({
+          "metadata.userId": distributor._id,
+          "metadata.userEmail": distributor.email,
+          action: 'distributor_posting_reminder_sent',
+          tags: { $in: [uniqueTag] },
+          createdAt: { $gte: twentyDaysAgo }
+        }).select('_id createdAt').lean();
+
+        if (existingReminder) {
+          console.log(`⏭️ Skipping ${daysUntilDeadline}-day posting reminder for ${distributorName} - already sent for ${deliveryMonth.month} ${deliveryMonth.year} on ${new Date(existingReminder.createdAt).toLocaleString()}`);
+          emailsSkipped++;
+          skippedEmails.push(distributor.email);
+          continue;
+        }
         
         // Send email reminder
         await sendEmail(
@@ -85,7 +115,7 @@ const checkPostingDeadlineReminders = async () => {
           await sendSMS(distributor.phone, smsMessage);
         }
 
-        // Log the reminder
+        // Log the reminder with unique tag to prevent future duplicates
         await logSystemAction('distributor_posting_reminder_sent', 'notification', {
           message: `${daysUntilDeadline}-day posting reminder sent to ${distributorName} for ${deliveryMonth.month} ${deliveryMonth.year}`,
           userId: distributor._id,
@@ -95,14 +125,19 @@ const checkPostingDeadlineReminders = async () => {
           deliveryMonth: `${deliveryMonth.month} ${deliveryMonth.year}`,
           deadlineDate: nextMonth.deadline,
           severity: 'low',
-          tags: ['notification', 'distributor', 'posting-reminder', 'automated']
+          tags: ['notification', 'distributor', 'posting-reminder', 'automated', uniqueTag]
         });
 
+        emailsSent++;
+        sentToEmails.push(distributor.email);
         console.log(`✅ Sent ${daysUntilDeadline}-day posting reminder to ${distributorName} for ${deliveryMonth.month} ${deliveryMonth.year}`);
 
       } catch (error) {
         console.error(`Failed to send ${daysUntilDeadline}-day reminder to ${distributor.name}:`, error);
         
+        emailsFailed++;
+        failedEmails.push(distributor.email);
+
         await logSystemAction('distributor_posting_reminder_failed', 'notification', {
           message: `Failed to send ${daysUntilDeadline}-day posting reminder to ${distributor.name}`,
           userId: distributor._id,
@@ -118,6 +153,25 @@ const checkPostingDeadlineReminders = async () => {
         });
       }
     }
+
+    // Log overall summary
+    const summaryMessage = `Posting deadline ${daysUntilDeadline}-day reminders completed for ${deliveryMonth.month} ${deliveryMonth.year}. Total Distributors: ${distributors.length}, Sent: ${emailsSent}, Failed: ${emailsFailed}, Skipped: ${emailsSkipped}`;
+    console.log(`📊 ${summaryMessage}`);
+    
+    await logSystemAction('distributor_posting_reminders_summary', 'notification', {
+      message: summaryMessage,
+      deliveryMonth: `${deliveryMonth.month} ${deliveryMonth.year}`,
+      daysUntilDeadline,
+      totalDistributors: distributors.length,
+      emailsSent,
+      emailsFailed,
+      emailsSkipped,
+      sentToEmails,
+      failedEmails,
+      skippedEmails,
+      severity: emailsFailed > 0 ? 'medium' : 'low',
+      tags: ['notification', 'distributor', 'posting-reminder', 'automated', 'summary']
+    });
 
   } catch (error) {
     console.error('Error in posting deadline reminder check:', error);
@@ -205,10 +259,40 @@ const checkApprovalReminders = async () => {
       distributorDealsMap.get(distributorId).deals.push(deal);
     }
 
+    // Track statistics for approval reminders
+    let approvalEmailsSent = 0;
+    let approvalEmailsFailed = 0;
+    let approvalEmailsSkipped = 0;
+    const approvalSentToEmails = [];
+    const approvalFailedEmails = [];
+    const approvalSkippedEmails = [];
+
     // Send reminders to each distributor
     for (const [distributorId, { distributor, deals }] of distributorDealsMap.entries()) {
       try {
         const distributorName = distributor.businessName || distributor.name;
+        
+        // Create unique tags for each deal to prevent duplicate reminders for same deals
+        const dealIds = deals.map(d => d._id.toString()).sort().join('-');
+        const uniqueTag = `approval-5days-${dealIds.substring(0, 20)}`; // Use first 20 chars of deal IDs hash
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        
+        // Check if this distributor has already been notified about these deals
+        const existingReminder = await Log.findOne({
+          "metadata.userId": distributor._id,
+          "metadata.userEmail": distributor.email,
+          action: 'distributor_approval_reminder_sent',
+          tags: { $in: [uniqueTag] },
+          createdAt: { $gte: sevenDaysAgo }
+        }).select('_id createdAt').lean();
+
+        if (existingReminder) {
+          console.log(`⏭️ Skipping approval reminder for ${distributorName} - already sent for these ${deals.length} deals on ${new Date(existingReminder.createdAt).toLocaleString()}`);
+          approvalEmailsSkipped++;
+          approvalSkippedEmails.push(distributor.email);
+          continue;
+        }
         
         // Send email reminder
         await sendEmail(
@@ -239,7 +323,7 @@ const checkApprovalReminders = async () => {
           await deal.save();
         }
 
-        // Log the reminder
+        // Log the reminder with unique tag to prevent future duplicates
         await logSystemAction('distributor_approval_reminder_sent', 'notification', {
           message: `Approval reminder sent to ${distributorName} for ${deals.length} deal(s) with commitments`,
           userId: distributor._id,
@@ -247,15 +331,21 @@ const checkApprovalReminders = async () => {
           userEmail: distributor.email,
           dealsCount: deals.length,
           totalCommitments: deals.reduce((sum, deal) => sum + (deal.commitments ? deal.commitments.length : 0), 0),
+          dealIds: deals.map(d => d._id.toString()),
           severity: 'low',
-          tags: ['notification', 'distributor', 'approval-reminder', 'automated']
+          tags: ['notification', 'distributor', 'approval-reminder', 'automated', uniqueTag]
         });
 
+        approvalEmailsSent++;
+        approvalSentToEmails.push(distributor.email);
         console.log(`✅ Sent approval reminder to ${distributorName} for ${deals.length} deals`);
 
       } catch (error) {
         console.error(`Failed to send approval reminder to ${distributor.name}:`, error);
         
+        approvalEmailsFailed++;
+        approvalFailedEmails.push(distributor.email);
+
         await logSystemAction('distributor_approval_reminder_failed', 'notification', {
           message: `Failed to send approval reminder to ${distributor.name}`,
           userId: distributor._id,
@@ -270,6 +360,24 @@ const checkApprovalReminders = async () => {
         });
       }
     }
+
+    // Log overall summary for approval reminders
+    const approvalSummaryMessage = `Distributor approval reminders completed. Total Distributors: ${distributorDealsMap.size}, Total Deals: ${dealsNeedingApproval.length}, Sent: ${approvalEmailsSent}, Failed: ${approvalEmailsFailed}, Skipped: ${approvalEmailsSkipped}`;
+    console.log(`📊 ${approvalSummaryMessage}`);
+    
+    await logSystemAction('distributor_approval_reminders_summary', 'notification', {
+      message: approvalSummaryMessage,
+      totalDistributors: distributorDealsMap.size,
+      totalDeals: dealsNeedingApproval.length,
+      emailsSent: approvalEmailsSent,
+      emailsFailed: approvalEmailsFailed,
+      emailsSkipped: approvalEmailsSkipped,
+      sentToEmails: approvalSentToEmails,
+      failedEmails: approvalFailedEmails,
+      skippedEmails: approvalSkippedEmails,
+      severity: approvalEmailsFailed > 0 ? 'medium' : 'low',
+      tags: ['notification', 'distributor', 'approval-reminder', 'automated', 'summary']
+    });
 
   } catch (error) {
     console.error('Error in approval reminder check:', error);

@@ -57,6 +57,8 @@ const sendDailyCommitmentStatusSummaries = async () => {
 
     let emailsSent = 0;
     let emailsFailed = 0;
+    const sentToEmails = [];
+    const failedEmails = [];
 
     // Process each user's status changes
     for (const [userId, userData] of Object.entries(userStatusChanges)) {
@@ -102,9 +104,12 @@ const sendDailyCommitmentStatusSummaries = async () => {
         );
 
         emailsSent++;
+        sentToEmails.push(user.email);
+        console.log(`✅ Summary email sent successfully to ${user.email}`);
 
       } catch (error) {
         emailsFailed++;
+        failedEmails.push(userData.user?.email || 'unknown');
         console.error(`❌ Failed to send summary email to user ${userId}:`, error);
         
         // Log the error
@@ -124,17 +129,19 @@ const sendDailyCommitmentStatusSummaries = async () => {
     }
 
     // Log summary
-    const summaryMessage = `Daily commitment status summary completed. Emails sent: ${emailsSent}, Failed: ${emailsFailed}`;
+    const summaryMessage = `Daily commitment status summary completed. Total Users: ${Object.keys(userStatusChanges).length}, Status Changes: ${statusChanges.length}, Sent: ${emailsSent}, Failed: ${emailsFailed}`;
     console.log(`📊 ${summaryMessage}`);
     
     await logSystemAction('send_daily_commitment_status_summaries_completed', 'email', {
       message: summaryMessage,
+      totalUsers: Object.keys(userStatusChanges).length,
+      totalStatusChanges: statusChanges.length,
       emailsSent,
       emailsFailed,
-      totalStatusChanges: statusChanges.length,
-      totalUsers: Object.keys(userStatusChanges).length,
+      sentToEmails,
+      failedEmails,
       severity: emailsFailed > 0 ? 'medium' : 'low',
-      tags: ['email', 'daily-summary', 'commitment-status', 'automated']
+      tags: ['email', 'daily-summary', 'commitment-status', 'automated', 'summary']
     });
 
   } catch (error) {
