@@ -2,7 +2,6 @@ const express = require("express");
 const Commitment = require("../../models/Commitments");
 const Deal = require("../../models/Deals");
 const User = require('../../models/User');
-const sendEmail = require('../../utils/email');
 const { sendDealMessage } = require('../../utils/message');
 const { createNotification, notifyUsersByRole } = require('../Common/Notification');
 const DailyCommitmentSummary = require('../../models/DailyCommitmentSummary');
@@ -444,15 +443,6 @@ router.post("/buy/:dealId", isMemberAdmin, async (req, res) => {
       priority: 'high'
     });
 
-    await notifyUsersByRole('admin', {
-      type: 'commitment',
-      subType: 'commitment_created',
-      title: 'New Deal Commitment',
-      message: `${user.name} has committed to deal "${deal.name}" by distributor ${distributor.name} - Total: ${processedSizeCommitments.reduce((total, sc) => total + sc.quantity, 0)} units`,
-      relatedId: commitment._id,
-      onModel: 'Commitment',
-      priority: 'medium'
-    });
 
     // Log the action
     await logCollaboratorAction(req, 'create_commitment', 'commitment', {
@@ -628,25 +618,6 @@ router.put("/update-status", async (req, res) => {
       onModel: 'Commitment',
       priority: 'medium'
     });
-
-    // Send notifications
-    if (commitment.userId.email) {
-      let emailSubject = `Commitment Status Update - ${status.toUpperCase()}`;
-      let emailMessage = `Your commitment for deal "${commitment.dealId.name}" has been ${status}`;
-      
-      if (commitment.modifiedByDistributor) {
-        emailMessage += `\n\nOriginal Commitment:\n${originalSizeDetails}\nTotal: $${commitment.totalPrice.toFixed(2)}`;
-        emailMessage += `\n\nModified Details:\n${modifiedSizeDetails}\nTotal: $${commitment.modifiedTotalPrice.toFixed(2)}`;
-      } else {
-        emailMessage += `\n\nDetails:\n${originalSizeDetails}${discountTierMessage}\nTotal: $${commitment.totalPrice.toFixed(2)}`;
-      }
-
-      if (distributorResponse) {
-        emailMessage += `\n\nDistributor Message: ${distributorResponse}`;
-      }
-
-      await sendEmail(commitment.userId.email, emailSubject, emailMessage);
-    }
 
     // Send SMS notifications
     if (commitment.userId.phone) {

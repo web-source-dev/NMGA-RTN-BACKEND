@@ -77,7 +77,6 @@ const checkCommitmentWindowOpeningReminders = async () => {
           createdAt: { $gte: twentyDaysAgo }
         }).select('_id createdAt').lean();
 
-        console.log('existingReminder', existingReminder);
         console.log(`🔍 Duplicate check for ${member.name}: ${existingReminder ? `FOUND (${new Date(existingReminder.createdAt).toLocaleString()}) - SKIPPING` : 'NOT FOUND - SENDING'}`);
 
         if (existingReminder) {
@@ -227,13 +226,15 @@ const checkCommitmentWindowClosingReminders = async () => {
       return;
     }
 
-    // Track statistics
+    // Track statistics with separate skip reasons
     let emailsSent = 0;
     let emailsFailed = 0;
-    let emailsSkipped = 0;
+    let emailsSkippedDuplicate = 0;
+    let emailsSkippedHasCommitments = 0;
     const sentToEmails = [];
     const failedEmails = [];
-    const skippedEmails = [];
+    const skippedDuplicateEmails = [];
+    const skippedHasCommitmentsEmails = [];
 
     // Send reminders to all members
     for (const member of members) {
@@ -253,34 +254,41 @@ const checkCommitmentWindowClosingReminders = async () => {
           createdAt: { $gte: twentyDaysAgo }
         }) .select('_id createdAt').lean();
 
-
-        console.log('existingReminder', existingReminder);
-        console.log(`🔍 Duplicate check for ${member.name}: ${existingReminder ? `FOUND (${new Date(existingReminder.createdAt).toLocaleString()}) - SKIPPING` : 'NOT FOUND - SENDING'}`);
+        console.log(`🔍 Duplicate check for ${member.name} (${timeRemaining}): ${existingReminder ? `FOUND (${new Date(existingReminder.createdAt).toLocaleString()}) - SKIPPING` : 'NOT FOUND - CHECKING COMMITMENTS'}`);
 
         if (existingReminder) {
           console.log(`⏭️ Skipping ${timeRemaining} closing reminder for ${member.name} - already sent for ${currentMonth.month} ${currentMonth.year} on ${new Date(existingReminder.createdAt).toLocaleString()}`);
-          emailsSkipped++;
-          skippedEmails.push(member.email);
+          emailsSkippedDuplicate++;
+          skippedDuplicateEmails.push(member.email);
           continue;
         }
 
         // Check if member has any commitments for this month's deals
+        const currentMonthDeals = await Deal.find({
+          commitmentStartAt: {
+            $gte: new Date(currentMonth.commitmentStart),
+            $lt: new Date(new Date(currentMonth.commitmentStart).getTime() + 24 * 60 * 60 * 1000)
+          },
+          commitmentEndsAt: {
+            $gte: new Date(currentMonth.commitmentEnd),
+            $lt: new Date(new Date(currentMonth.commitmentEnd).getTime() + 24 * 60 * 60 * 1000)
+          }
+        }).distinct('_id');
+
         const memberCommitments = await Commitment.find({
           userId: member._id,
-          // Find commitments for deals that match this month's commitment period
-          dealId: { $in: await Deal.find({
-            commitmentStartAt: {
-              $gte: new Date(currentMonth.commitmentStart),
-              $lt: new Date(new Date(currentMonth.commitmentStart).getTime() + 24 * 60 * 60 * 1000)
-            },
-            commitmentEndsAt: {
-              $gte: new Date(currentMonth.commitmentEnd),
-              $lt: new Date(new Date(currentMonth.commitmentEnd).getTime() + 24 * 60 * 60 * 1000)
-            }
-          }).distinct('_id') }
+          dealId: { $in: currentMonthDeals }
         });
 
         const hasCommitments = memberCommitments.length > 0;
+
+        // ✅ ONLY send reminders to members who HAVEN'T committed yet
+        if (hasCommitments) {
+          console.log(`⏭️ Skipping ${timeRemaining} closing reminder for ${member.name} - already has ${memberCommitments.length} commitment(s) for this period`);
+          emailsSkippedHasCommitments++;
+          skippedHasCommitmentsEmails.push(member.email);
+          continue;
+        }
 
         // Send email reminder
         await sendEmail(
@@ -311,17 +319,17 @@ const checkCommitmentWindowClosingReminders = async () => {
         // Log the reminder with unique tag to prevent future duplicates
         const uniqueTagForLog = `closing-${timeRemaining.replace(/\s+/g, '-')}-${currentMonth.month}-${currentMonth.year}`;
         await logSystemAction('member_commitment_window_closing_reminder_sent', 'notification', {
-          message: `${timeRemaining} commitment window closing reminder sent to ${member.name} for ${currentMonth.month} ${currentMonth.year}`,
+          message: `${timeRemaining} commitment window closing reminder sent to ${member.name} for ${currentMonth.month} ${currentMonth.year} - No commitments yet`,
           userId: member._id,
           userName: member.name,
           userEmail: member.email,
           commitmentMonth: `${currentMonth.month} ${currentMonth.year}`,
           timeRemaining,
-          hasCommitments,
-          commitmentsCount: memberCommitments.length,
+          hasCommitments: false,
+          commitmentsCount: 0,
           commitmentEndDate: currentMonth.commitmentEnd,
           severity: 'low',
-          tags: ['notification', 'member', 'commitment-window', 'closing', 'automated', uniqueTagForLog]
+          tags: ['notification', 'member', 'commitment-window', 'closing', 'automated', 'no-commitments', uniqueTagForLog]
         });
 
         emailsSent++;
@@ -351,7 +359,8 @@ const checkCommitmentWindowClosingReminders = async () => {
     }
 
     // Log overall summary
-    const summaryMessage = `Commitment window ${timeRemaining} closing reminders completed for ${currentMonth.month} ${currentMonth.year}. Total Members: ${members.length}, Sent: ${emailsSent}, Failed: ${emailsFailed}, Skipped: ${emailsSkipped}`;
+    const totalSkipped = emailsSkippedDuplicate + emailsSkippedHasCommitments;
+    const summaryMessage = `Commitment window ${timeRemaining} closing reminders completed for ${currentMonth.month} ${currentMonth.year}. Total Members: ${members.length}, Sent: ${emailsSent}, Failed: ${emailsFailed}, Skipped (Duplicate): ${emailsSkippedDuplicate}, Skipped (Has Commitments): ${emailsSkippedHasCommitments}`;
     console.log(`📊 ${summaryMessage}`);
     
     await logSystemAction('member_commitment_window_closing_reminders_summary', 'notification', {
@@ -361,10 +370,13 @@ const checkCommitmentWindowClosingReminders = async () => {
       totalMembers: members.length,
       emailsSent,
       emailsFailed,
-      emailsSkipped,
+      emailsSkippedDuplicate,
+      emailsSkippedHasCommitments,
+      totalSkipped,
       sentToEmails,
       failedEmails,
-      skippedEmails,
+      skippedDuplicateEmails,
+      skippedHasCommitmentsEmails,
       severity: emailsFailed > 0 ? 'medium' : 'low',
       tags: ['notification', 'member', 'commitment-window', 'closing', 'automated', 'summary']
     });

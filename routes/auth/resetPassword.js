@@ -48,8 +48,13 @@ router.post('/:token', async (req, res) => {
             resetMethod: 'token'
           }
         });
+        const changeDetails = {
+          time: new Date().toLocaleString(),
+          location: req.ip || req.headers['x-forwarded-for'] || 'Unknown',
+          device: req.headers['user-agent'] || 'Unknown'
+        };
 
-        const emailContent = passwordChangedEmail(user.name);
+        const emailContent = passwordChangedEmail(user.name,changeDetails);
         await sendEmail(user.email, 'Password Changed Successfully', emailContent);
       } catch (error) {
         console.error('Error logging or sending email:', error);
