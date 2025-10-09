@@ -1,7 +1,6 @@
 const SibApiV3Sdk = require('@getbrevo/brevo');
 const User = require('../models/User');
 const { isFeatureEnabled } = require('../config/features');
-const { logSystemAction } = require('./collaboratorLogger');
 
 const sendEmail = async (to, subject, html) => {
   // Check if email feature is disabled
@@ -25,24 +24,6 @@ const sendEmail = async (to, subject, html) => {
       subject,
       contentLength: html?.length || 0,
       timestamp
-    });
-
-    // Log disabled email attempt
-    await logSystemAction('email_disabled', 'email', { 
-      message: `Email feature disabled - Would have sent to ${uniqueEmails.length} recipient(s)`,
-      recipients: uniqueEmails,
-      primaryEmails,
-      additionalEmails: uniqueEmails.filter(email => !primaryEmails.includes(email)),
-      subject,
-      contentLength: html?.length || 0,
-      sender: 'New Mexico Grocers Association',
-      timestamp,
-      severity: 'low',
-      tags: ['email', 'disabled-feature'],
-      metadata: {
-        featureDisabled: true,
-        wouldHaveSent: true
-      }
     });
     
     return { messageId: 'disabled', to: uniqueEmails, subject: subject }; // Return mock success response
@@ -103,55 +84,11 @@ const sendEmail = async (to, subject, html) => {
       sender: sendSmtpEmail.sender.email
     });
 
-    // Create detailed success log
-    await logSystemAction('email_sent_successfully', 'email', { 
-      message: `Email sent successfully to ${uniqueEmails.length} recipient(s): ${subject}`,
-      messageId: result.messageId,
-      recipients: uniqueEmails,
-      primaryEmails,
-      additionalEmails: uniqueEmails.filter(email => !primaryEmails.includes(email)),
-      subject,
-      contentLength: html?.length || 0,
-      senderName: sendSmtpEmail.sender.name,
-      senderEmail: sendSmtpEmail.sender.email,
-      timestamp,
-      severity: 'low',
-      tags: ['email', 'communication', 'sent'],
-      metadata: {
-        deliveryStatus: 'delivered',
-        recipientCount: uniqueEmails.length,
-        hasAdditionalEmails: uniqueEmails.length > primaryEmails.length
-      }
-    });
-
     return result;
   } catch (error) {
     const timestamp = new Date().toISOString();
     console.error('Failed to send email:', error);
     
-    // Create detailed error log
-    await logSystemAction('email_send_failed', 'email', { 
-      message: `Failed to send email to ${uniqueEmails.length} recipient(s): ${subject}`,
-      recipients: uniqueEmails,
-      primaryEmails,
-      additionalEmails: uniqueEmails.filter(email => !primaryEmails.includes(email)),
-      subject,
-      contentLength: html?.length || 0,
-      senderName: sendSmtpEmail.sender.name,
-      senderEmail: sendSmtpEmail.sender.email,
-      timestamp,
-      error: {
-        message: error.message,
-        code: error.code || 'Unknown',
-        response: error.response?.data
-      },
-      severity: 'high',
-      tags: ['email', 'communication', 'failed'],
-      metadata: {
-        apiError: true,
-        errorDetails: JSON.stringify(error.response?.data || {})
-      }
-    });
     throw error;
   }
 };
