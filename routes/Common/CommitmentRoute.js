@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Commitment = require('../../models/Commitments');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Get all commitments
 router.get('/', async (req, res) => {
@@ -12,6 +12,7 @@ router.get('/', async (req, res) => {
     const commitments = await Commitment.find().populate('userId dealId');
     res.json(commitments);
   } catch (err) {
+    await logError(req, 'view_commitments', 'commitments list', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -25,10 +26,16 @@ router.post('/', async (req, res) => {
     // Log the action
     await logCollaboratorAction(req, 'create_commitment', 'commitment', {
       dealTitle: req.body.dealTitle || 'Unknown Deal',
+      resourceId: savedCommitment._id,
+      dealId: req.body.dealId
     });
     
     res.status(201).json(savedCommitment);
   } catch (err) {
+    await logError(req, 'create_commitment', 'commitment', err, {
+      dealTitle: req.body.dealTitle || 'Unknown Deal',
+      dealId: req.body.dealId
+    });
     res.status(400).json({ error: err.message });
   }
 });

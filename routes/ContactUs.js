@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const ContactUs = require("../models/contactus");
 const { isAdmin } = require("../middleware/auth");
-const { logCollaboratorAction } = require("../utils/collaboratorLogger");
+const { logCollaboratorAction, logError } = require("../utils/collaboratorLogger");
 
 // Update contact status
 router.patch("/status/:id", isAdmin, async (req, res) => {
@@ -24,10 +24,6 @@ router.patch("/status/:id", isAdmin, async (req, res) => {
     );
 
     if (!updatedContact) {
-      await logCollaboratorAction(req, 'update_contact_status_failed', 'contact', { 
-        contactId: id,
-        additionalInfo: 'Contact not found'
-      });
       return res.status(404).json({
         success: false,
         message: "Contact not found"
@@ -50,9 +46,9 @@ router.patch("/status/:id", isAdmin, async (req, res) => {
 
   } catch (error) {
     console.error("Error updating contact status:", error);
-    await logCollaboratorAction(req, 'update_contact_status_failed', 'contact', { 
+    await logError(req, 'update_contact_status', 'contact', error, {
       contactId: req.params.id,
-      additionalInfo: `Error: ${error.message}`
+      status: req.body.status
     });
     res.status(500).json({
       success: false,
@@ -101,8 +97,9 @@ router.post("/submit", async (req, res) => {
 
   } catch (error) {
     console.error("Error in contact form submission:", error);
-    await logCollaboratorAction(req, 'submit_contact_form_failed', 'contact', { 
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'submit_contact_form', 'contact', error, {
+      userRole: req.body.user_role,
+      subject: req.body.subject
     });
     res.status(500).json({
       success: false,
@@ -131,9 +128,7 @@ router.get("/all", isAdmin, async (req, res) => {
 
   } catch (error) {
     console.error("Error fetching contact forms:", error);
-    await logCollaboratorAction(req, 'view_all_contacts_failed', 'contacts', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'view_all_contacts', 'contacts', error);
     res.status(500).json({
       success: false,
       message: "Error fetching contact forms",

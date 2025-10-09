@@ -184,10 +184,14 @@ router.post('/create-password', async (req, res) => {
     
     await user.save();
     
-    // Log the action
-    await logCollaboratorAction(req, 'setup_password', 'user account', {
+    // Log the action  
+    await logCollaboratorAction(req, 'setup_password', 'user', {
       targetUserName: user.name,
       targetUserEmail: user.email,
+      resourceId: user._id,
+      resourceName: user.name,
+      severity: 'medium',
+      tags: ['password-setup', 'authentication', 'member-onboarding'],
       additionalInfo: 'Password created for newly added member'
     });
     

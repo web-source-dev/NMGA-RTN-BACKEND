@@ -4,9 +4,8 @@ const User = require('../../models/User');
 const Commitment = require('../../models/Commitments');
 const Deal = require('../../models/Deals');
 const Supplier = require('../../models/Suppliers');
-const Log = require('../../models/Logs');
 const { isDistributorAdmin, getCurrentUserContext } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Get all members with commitments for a distributor
 router.get('/members-with-commitments', isDistributorAdmin, async (req, res) => {
@@ -250,8 +249,10 @@ router.get('/members-with-commitments', isDistributorAdmin, async (req, res) => 
     console.error('Error fetching members with commitments:', error);
     
     // Log the error with admin impersonation details if applicable
-    await logCollaboratorAction(req, 'view_members_with_commitments_failed', 'members', { 
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'view_members_with_commitments', 'members', error, {
+      search: req.query.search,
+      status: req.query.status,
+      supplier: req.query.supplier
     });
     
     res.status(500).json({ error: 'Failed to fetch members with commitments' });
@@ -364,9 +365,8 @@ router.get('/member-details/:memberId', isDistributorAdmin, async (req, res) => 
     console.error('Error fetching member details:', error);
     
     // Log the error with admin impersonation details if applicable
-    await logCollaboratorAction(req, 'view_member_details_failed', 'member', { 
-      memberId: req.params.memberId,
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'view_member_details', 'member', error, {
+      memberId: req.params.memberId
     });
     
     res.status(500).json({ error: 'Failed to fetch member details' });
@@ -448,9 +448,8 @@ router.get('/member-analytics/:memberId', isDistributorAdmin, async (req, res) =
     console.error('Error fetching member analytics:', error);
     
     // Log the error with admin impersonation details if applicable
-    await logCollaboratorAction(req, 'view_member_analytics_failed', 'member', { 
-      memberId: req.params.memberId,
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'view_member_analytics', 'member', error, {
+      memberId: req.params.memberId
     });
     
     res.status(500).json({ error: 'Failed to fetch member analytics' });

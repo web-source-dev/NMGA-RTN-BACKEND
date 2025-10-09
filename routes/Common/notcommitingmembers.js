@@ -3,7 +3,7 @@ const router = express.Router();
 const User = require('../../models/User');
 const Commitment = require('../../models/Commitments');
 const { isAdmin, getCurrentUserContext } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Get members who haven't committed to any deals in the past month (admin only)
 router.get('/not-committing/admin', isAdmin, async (req, res) => {
@@ -81,7 +81,11 @@ router.get('/not-committing/admin', isAdmin, async (req, res) => {
 
     // Log the action
     await logCollaboratorAction(req, 'view_inactive_members', 'inactive members report', {
-      additionalInfo: `Found ${inactiveMembersWithDetails.length} inactive members`
+      totalInactive: inactiveMembersWithDetails.length,
+      neverCommitted: neverCommitted.length,
+      recentInactive: recentInactive.length,
+      mediumTermInactive: mediumTermInactive.length,
+      longTermInactive: longTermInactive.length
     });
 
     return res.json({ 
@@ -99,13 +103,7 @@ router.get('/not-committing/admin', isAdmin, async (req, res) => {
     console.error("Error fetching inactive members:", error);
     
     // Log the error
-    try {
-      await logCollaboratorAction(req, 'view_inactive_members_failed', 'inactive members report', {
-        additionalInfo: `Error: ${error.message}`
-      });
-    } catch (logError) {
-      console.error('Error logging:', logError);
-    }
+    await logError(req, 'view_inactive_members', 'inactive members report', error);
     
     return res.status(500).json({ 
       success: false, 
@@ -136,7 +134,7 @@ router.get('/blocked-members/admin', isAdmin, async (req, res) => {
 
     // Log the action
     await logCollaboratorAction(req, 'view_blocked_members', 'blocked members report', {
-      additionalInfo: `Found ${blockedMembersWithDetails.length} blocked members`
+      totalBlocked: blockedMembersWithDetails.length
     });
 
     return res.json({ 
@@ -147,13 +145,7 @@ router.get('/blocked-members/admin', isAdmin, async (req, res) => {
     console.error("Error fetching blocked members:", error);
     
     // Log the error
-    try {
-      await logCollaboratorAction(req, 'view_blocked_members_failed', 'blocked members report', {
-        additionalInfo: `Error: ${error.message}`
-      });
-    } catch (logError) {
-      console.error('Error logging:', logError);
-    }
+    await logError(req, 'view_blocked_members', 'blocked members report', error);
     
     return res.status(500).json({ 
       success: false, 
@@ -187,6 +179,7 @@ router.put('/inactivate/:userId/admin', isAdmin, async (req, res) => {
     await logCollaboratorAction(req, 'block_user', 'user management', {
       targetUserName: updatedUser.name,
       targetUserEmail: updatedUser.email,
+      resourceId: updatedUser._id,
       additionalInfo: 'Member inactivated'
     });
 
@@ -199,13 +192,9 @@ router.put('/inactivate/:userId/admin', isAdmin, async (req, res) => {
     console.error("Error inactivating user:", error);
     
     // Log the error
-    try {
-      await logCollaboratorAction(req, 'block_user_failed', 'user management', {
-        additionalInfo: `Error: ${error.message}`
-      });
-    } catch (logError) {
-      console.error('Error logging:', logError);
-    }
+    await logError(req, 'block_user', 'user management', error, {
+      userId: req.params.userId
+    });
     
     return res.status(500).json({ 
       success: false, 
@@ -239,6 +228,7 @@ router.put('/reactivate/:userId/admin', isAdmin, async (req, res) => {
     await logCollaboratorAction(req, 'unblock_user', 'user management', {
       targetUserName: updatedUser.name,
       targetUserEmail: updatedUser.email,
+      resourceId: updatedUser._id,
       additionalInfo: 'Member reactivated'
     });
 
@@ -251,13 +241,9 @@ router.put('/reactivate/:userId/admin', isAdmin, async (req, res) => {
     console.error("Error reactivating user:", error);
     
     // Log the error
-    try {
-      await logCollaboratorAction(req, 'unblock_user_failed', 'user management', {
-        additionalInfo: `Error: ${error.message}`
-      });
-    } catch (logError) {
-      console.error('Error logging:', logError);
-    }
+    await logError(req, 'unblock_user', 'user management', error, {
+      userId: req.params.userId
+    });
     
     return res.status(500).json({ 
       success: false, 

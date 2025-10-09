@@ -1,12 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../../models/User');
-const Log = require('../../models/Logs');
 const sendEmail = require('../../utils/email');
 const unblockUserEmail = require('../../utils/EmailTemplates/unblockUserEmail');
 const { sendAuthMessage } = require('../../utils/message');
 const { isAdmin } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 router.post('/', isAdmin, async (req, res) => {
   try {
@@ -33,6 +32,14 @@ router.post('/', isAdmin, async (req, res) => {
 
     res.json({ message: 'User unblocked successfully', success: true });
   } catch (error) {
+    console.error('Error unblocking user:', error);
+    
+    // Log the error
+    await logError(req, 'unblock_user', 'user', error, {
+      targetUserId: req.body.userId,
+      severity: 'high'
+    });
+    
     res.status(500).json({ message: 'Error unblocking user', success: false });
   }
 });

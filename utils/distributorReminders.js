@@ -3,12 +3,12 @@ const User = require('../models/User');
 const Commitment = require('../models/Commitments');
 const sendEmail = require('./email');
 const { sendSMS } = require('./message');
-const Log = require('../models/Logs');
 const DistributorReminderTemplate = require('./EmailTemplates/DistributorReminderTemplate');
 const DealMessages = require('./MessageTemplates/DealMessages');
 const { isFeatureEnabled } = require('../config/features');
 const { shouldSendPostingReminders, getNextMonthName } = require('./monthlySchedule');
 const mongoose = require('mongoose');
+const { logSystemAction } = require('./collaboratorLogger');
 
 /**
  * Check for monthly posting deadline reminders
@@ -108,10 +108,16 @@ const checkPostingDeadlineReminders = async () => {
         }
 
         // Log the reminder
-        await Log.create({
+        await logSystemAction('distributor_posting_reminder_sent', 'notification', {
           message: `${daysUntilDeadline}-day posting reminder sent to ${distributorName} for ${deliveryMonth.month} ${deliveryMonth.year}`,
-          type: 'info',
-          user_id: distributor._id
+          userId: distributor._id,
+          userName: distributorName,
+          userEmail: distributor.email,
+          daysUntilDeadline,
+          deliveryMonth: `${deliveryMonth.month} ${deliveryMonth.year}`,
+          deadlineDate: nextMonth.deadline,
+          severity: 'low',
+          tags: ['notification', 'distributor', 'posting-reminder', 'automated']
         });
 
         console.log(`✅ Sent ${daysUntilDeadline}-day posting reminder to ${distributorName} for ${deliveryMonth.month} ${deliveryMonth.year}`);
@@ -119,10 +125,18 @@ const checkPostingDeadlineReminders = async () => {
       } catch (error) {
         console.error(`Failed to send ${daysUntilDeadline}-day reminder to ${distributor.name}:`, error);
         
-        await Log.create({
+        await logSystemAction('distributor_posting_reminder_failed', 'notification', {
           message: `Failed to send ${daysUntilDeadline}-day posting reminder to ${distributor.name}`,
-          type: 'error',
-          user_id: distributor._id
+          userId: distributor._id,
+          userName: distributor.name,
+          userEmail: distributor.email,
+          daysUntilDeadline,
+          error: {
+            message: error.message,
+            stack: error.stack
+          },
+          severity: 'high',
+          tags: ['notification', 'distributor', 'posting-reminder', 'failed']
         });
       }
     }
@@ -132,9 +146,14 @@ const checkPostingDeadlineReminders = async () => {
     
     if (mongoose.connection.readyState === 1) {
       try {
-        await Log.create({
+        await logSystemAction('posting_deadline_reminder_check_failed', 'system', {
           message: `Error in posting deadline reminder check: ${error.message}`,
-          type: 'error'
+          error: {
+            message: error.message,
+            stack: error.stack
+          },
+          severity: 'critical',
+          tags: ['system', 'distributor', 'posting-reminder', 'critical-error']
         });
       } catch (logError) {
         console.error('Failed to create error log:', logError);
@@ -243,10 +262,15 @@ const checkApprovalReminders = async () => {
         }
 
         // Log the reminder
-        await Log.create({
+        await logSystemAction('distributor_approval_reminder_sent', 'notification', {
           message: `Approval reminder sent to ${distributorName} for ${deals.length} deal(s) with commitments`,
-          type: 'info',
-          user_id: distributor._id
+          userId: distributor._id,
+          userName: distributorName,
+          userEmail: distributor.email,
+          dealsCount: deals.length,
+          totalCommitments: deals.reduce((sum, deal) => sum + (deal.commitments ? deal.commitments.length : 0), 0),
+          severity: 'low',
+          tags: ['notification', 'distributor', 'approval-reminder', 'automated']
         });
 
         console.log(`✅ Sent approval reminder to ${distributorName} for ${deals.length} deals`);
@@ -254,10 +278,17 @@ const checkApprovalReminders = async () => {
       } catch (error) {
         console.error(`Failed to send approval reminder to ${distributor.name}:`, error);
         
-        await Log.create({
+        await logSystemAction('distributor_approval_reminder_failed', 'notification', {
           message: `Failed to send approval reminder to ${distributor.name}`,
-          type: 'error',
-          user_id: distributor._id
+          userId: distributor._id,
+          userName: distributor.name,
+          userEmail: distributor.email,
+          error: {
+            message: error.message,
+            stack: error.stack
+          },
+          severity: 'high',
+          tags: ['notification', 'distributor', 'approval-reminder', 'failed']
         });
       }
     }
@@ -267,9 +298,14 @@ const checkApprovalReminders = async () => {
     
     if (mongoose.connection.readyState === 1) {
       try {
-        await Log.create({
+        await logSystemAction('approval_reminder_check_failed', 'system', {
           message: `Error in approval reminder check: ${error.message}`,
-          type: 'error'
+          error: {
+            message: error.message,
+            stack: error.stack
+          },
+          severity: 'critical',
+          tags: ['system', 'distributor', 'approval-reminder', 'critical-error']
         });
       } catch (logError) {
         console.error('Failed to create error log:', logError);

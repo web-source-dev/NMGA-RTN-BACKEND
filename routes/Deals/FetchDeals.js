@@ -3,9 +3,8 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const Deal = require('../../models/Deals');
 const User = require('../../models/User');
-const Log = require('../../models/Logs');
 const { isDistributorAdmin, getCurrentUserContext } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 router.get('/', isDistributorAdmin, async (req, res) => {
   try {
@@ -221,8 +220,11 @@ router.get('/', isDistributorAdmin, async (req, res) => {
     
   } catch (error) {
     console.error('Error fetching deals:', error);
-    await logCollaboratorAction(req, 'view_distributor_deals_failed', 'deals', { 
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'view_distributor_deals', 'deals', error, {
+      category: req.query.category,
+      status: req.query.status,
+      month: req.query.month,
+      search: req.query.search
     });
     return res.status(500).json({ 
       success: false, 
@@ -251,9 +253,7 @@ router.get('/categories/:distributorId', isDistributorAdmin, async (req, res) =>
     });
   } catch (error) {
     console.error('Error fetching categories:', error);
-    await logCollaboratorAction(req, 'view_deal_categories_failed', 'deals', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'view_deal_categories', 'deals', error);
     return res.status(500).json({
       success: false,
       message: 'Error fetching categories',

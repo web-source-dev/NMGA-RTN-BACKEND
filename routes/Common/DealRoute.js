@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Deal = require('../../models/Deals');
 const { isAdmin } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 // Get all deals
 router.get('/', isAdmin, async (req, res) => {
   try {
@@ -12,6 +12,7 @@ router.get('/', isAdmin, async (req, res) => {
     const deals = await Deal.find().populate('distributor commitments');
     res.json(deals);
   } catch (err) {
+    await logError(req, 'view_all_deals', 'deals list', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -26,11 +27,17 @@ router.post('/', isAdmin, async (req, res) => {
     await logCollaboratorAction(req, 'create_deal', 'deal', {
       dealTitle: req.body.name || 'Untitled Deal',
       dealCategory: req.body.category,
-      dealPrice: req.body.discountPrice
+      dealPrice: req.body.discountPrice,
+      resourceId: savedDeal._id
     });
     
     res.status(201).json(savedDeal);
   } catch (err) {
+    await logError(req, 'create_deal', 'deal', err, {
+      dealTitle: req.body.name || 'Untitled Deal',
+      dealCategory: req.body.category,
+      dealPrice: req.body.discountPrice
+    });
     res.status(400).json({ error: err.message });
   }
 });
@@ -65,6 +72,9 @@ router.get('/recent', isAdmin, async (req, res) => {
 
     res.json(formattedDeals);
   } catch (err) {
+    await logError(req, 'view_recent_deals', 'recent deals', err, {
+      limit: Math.min(parseInt(req.query.limit) || 5, 20)
+    });
     res.status(500).json({ error: err.message });
   }
 });

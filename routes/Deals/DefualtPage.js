@@ -2,10 +2,9 @@ const express = require('express');
 const router = express.Router();
 const Deal = require('../../models/Deals');
 const Commitment = require('../../models/Commitments');
-const Log = require('../../models/Logs');
 const { isDistributorAdmin, getCurrentUserContext } = require('../../middleware/auth');
 const mongoose = require('mongoose');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Get dashboard statistics for distributor
 router.get('/dashboard-stats', isDistributorAdmin, async (req, res) => {
@@ -160,9 +159,7 @@ router.get('/dashboard-stats', isDistributorAdmin, async (req, res) => {
         console.error('Dashboard Stats Error:', error);
         
         // Log the error
-        await logCollaboratorAction(req, 'view_dashboard_stats_failed', 'dashboard statistics', {
-            additionalInfo: `Error: ${error.message}`
-        });
+        await logError(req, 'view_dashboard_stats', 'dashboard statistics', error);
         
         res.status(500).json({ message: "Error fetching dashboard statistics", error: error.message });
     }

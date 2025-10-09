@@ -4,8 +4,7 @@ const User = require('../../models/User');
 const Commitment = require('../../models/Commitments');
 const Deal = require('../../models/Deals');
 const { isAdmin, getCurrentUserContext } = require('../../middleware/auth');
-const Log = require('../../models/Logs');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Get all members (admin only)
 router.get('/all-members/:userRole', isAdmin, async (req, res) => {
@@ -32,9 +31,7 @@ router.get('/all-members/:userRole', isAdmin, async (req, res) => {
     console.error('Error fetching members:', error);
     
     // Log the error
-    await logCollaboratorAction(req, 'view_all_members_failed', 'members', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'view_all_members', 'members', error);
     
     return res.status(500).json({ 
       success: false,
@@ -103,9 +100,8 @@ router.get('/member-details/:memberId/:userRole', isAdmin, async (req, res) => {
     console.error('Error fetching member details:', error);
     
     // Log the error
-    await logCollaboratorAction(req, 'view_member_details_admin_failed', 'member', { 
-      memberId: req.params.memberId,
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'view_member_details_admin', 'member', error, {
+      memberId: req.params.memberId
     });
     
     return res.status(500).json({ 
@@ -175,9 +171,7 @@ router.get('/top-members/:userRole', isAdmin, async (req, res) => {
     console.error('Error fetching top members:', error);
     
     // Log the error
-    await logCollaboratorAction(req, 'view_top_members_failed', 'members', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'view_top_members', 'members', error);
     
     return res.status(500).json({ 
       success: false,

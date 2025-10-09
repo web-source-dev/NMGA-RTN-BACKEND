@@ -3,8 +3,7 @@ const router = express.Router();
 const Deal = require('../../models/Deals');
 const Commitment = require('../../models/Commitments');
 const { isAdmin, getCurrentUserContext } = require('../../middleware/auth');
-const Log = require('../../models/Logs');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Get recent deals and commitments (admin only)
 router.get('/recent', isAdmin, async (req, res) => {
@@ -41,9 +40,7 @@ router.get('/recent', isAdmin, async (req, res) => {
         console.error('Error fetching recent data:', error);
         
         // Log the error
-        await logCollaboratorAction(req, 'view_recent_activity_failed', 'recent data', { 
-            additionalInfo: `Error: ${error.message}`
-        });
+        await logError(req, 'view_recent_activity', 'recent data', error);
         
         res.status(500).json({
             success: false,

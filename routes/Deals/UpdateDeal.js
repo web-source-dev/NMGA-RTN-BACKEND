@@ -2,11 +2,10 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const Deal = require('../../models/Deals');
-const Log = require('../../models/Logs');
 const { createNotification, notifyUsersByRole } = require('../Common/Notification');
 const { broadcastDealUpdate, broadcastSingleDealUpdate } = require('../../utils/dealUpdates');
 const { isDistributorAdmin, getCurrentUserContext } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 router.put('/:dealId', isDistributorAdmin, async (req, res) => {
   try {
@@ -15,10 +14,6 @@ router.put('/:dealId', isDistributorAdmin, async (req, res) => {
     const updateData = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(dealId)) {
-      await logCollaboratorAction(req, 'update_deal_failed', 'deal', { 
-        dealId: dealId,
-        additionalInfo: 'Invalid deal ID provided for update'
-      });
       return res.status(400).json({ message: 'Invalid deal ID' });
     }
 
@@ -140,10 +135,6 @@ router.put('/:dealId', isDistributorAdmin, async (req, res) => {
     ).populate('distributor', 'name _id');
 
     if (!deal) {
-      await logCollaboratorAction(req, 'update_deal_failed', 'deal', { 
-        dealId: dealId,
-        additionalInfo: 'Attempt to update non-existent deal'
-      });
       return res.status(404).json({ message: 'Deal not found' });
     }
 
@@ -202,16 +193,11 @@ router.put('/:dealId', isDistributorAdmin, async (req, res) => {
     });
     res.status(200).json(deal);
   } catch (err) {
-    const deal = await Deal.findById(req.params.dealId);
-    const dealName = deal ? deal.name : 'unknown deal';
-    const { currentUser, originalUser, isImpersonating } = getCurrentUserContext(req);
-    
-    await logCollaboratorAction(req, 'update_deal_failed', 'deal', { 
-      dealId: req.params.dealId,
-      dealName: dealName,
-      additionalInfo: `Error: ${err.message}`
-    });
     console.error(err);
+    await logError(req, 'update_deal', 'deal', err, {
+      dealId: req.params.dealId,
+      modifiedFields: Object.keys(req.body).join(', ')
+    });
     res.status(500).json({ message: 'Server error' });
   }
 });

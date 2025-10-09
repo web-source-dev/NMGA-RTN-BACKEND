@@ -9,8 +9,7 @@ const cloudinary = require('cloudinary').v2;
 const csv = require('csv-parser');
 const mongoose = require('mongoose');
 const { isDistributorAdmin, getCurrentUserContext } = require('../../middleware/auth');
-const Log = require('../../models/Logs');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Configure Cloudinary
 cloudinary.config({
@@ -155,8 +154,8 @@ router.get('/', isDistributorAdmin, async (req, res) => {
     console.error('Error fetching deals for comparison:', error);
     
     // Log the error
-    await logCollaboratorAction(req, 'view_comparison_deals_failed', 'comparison deals', {
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'view_comparison_deals', 'comparison deals', error, {
+      monthFilter: req.query.monthFilter || 'all'
     });
     
     res.status(500).json({ message: 'Error fetching deals', error: error.message });
@@ -222,8 +221,8 @@ router.get('/template/:dealId', isDistributorAdmin, async (req, res) => {
     console.error('Error generating template:', error);
     
     // Log the error
-    await logCollaboratorAction(req, 'download_comparison_template_failed', 'comparison template', {
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'download_comparison_template', 'comparison template', error, {
+      dealId: req.params.dealId
     });
     
     res.status(500).json({ message: 'Error generating template', error: error.message });
@@ -444,8 +443,9 @@ router.post('/upload/:dealId',
     console.error('Error processing comparison:', error);
     
     // Log the error
-    await logCollaboratorAction(req, 'upload_comparison_data_failed', 'comparison data', {
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'upload_comparison_data', 'comparison data', error, {
+      dealId: req.params.dealId,
+      fileName: req.file?.originalname
     });
     
     res.status(500).json({ 
@@ -485,8 +485,8 @@ router.get('/details/:compareId', isDistributorAdmin, async (req, res) => {
     console.error('Error fetching comparison details:', error);
     
     // Log the error
-    await logCollaboratorAction(req, 'view_comparison_details_failed', 'comparison details', {
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'view_comparison_details', 'comparison details', error, {
+      compareId: req.params.compareId
     });
     
     res.status(500).json({ message: 'Error fetching comparison details', error: error.message });
@@ -551,8 +551,9 @@ router.get('/history/:dealId', isDistributorAdmin, async (req, res) => {
     console.error('Error fetching comparison history:', error);
     
     // Log the error
-    await logCollaboratorAction(req, 'view_comparison_history_failed', 'comparison history', {
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'view_comparison_history', 'comparison history', error, {
+      dealId: req.params.dealId,
+      monthFilter: req.query.monthFilter || 'all'
     });
     
     res.status(500).json({ message: 'Error fetching comparison history', error: error.message });

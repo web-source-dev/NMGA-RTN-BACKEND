@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const ChatMessage = require('../../models/ChatMessage');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Get all chat messages
 router.get('/', async (req, res) => {
@@ -12,6 +12,7 @@ router.get('/', async (req, res) => {
     const messages = await ChatMessage.find().populate('senderId commitmentId');
     res.json(messages);
   } catch (err) {
+    await logError(req, 'view_messages', 'chat messages', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -25,11 +26,16 @@ router.post('/', async (req, res) => {
     // Log the action
     await logCollaboratorAction(req, 'send_message', 'chat message', {
       messageLength: req.body.message?.length || 0,
-      commitmentId: req.body.commitmentId
+      commitmentId: req.body.commitmentId,
+      resourceId: savedMessage._id
     });
     
     res.status(201).json(savedMessage);
   } catch (err) {
+    await logError(req, 'send_message', 'chat message', err, {
+      messageLength: req.body.message?.length || 0,
+      commitmentId: req.body.commitmentId
+    });
     res.status(400).json({ error: err.message });
   }
 });

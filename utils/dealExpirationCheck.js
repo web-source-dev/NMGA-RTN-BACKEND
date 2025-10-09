@@ -2,11 +2,11 @@ const Deal = require('../models/Deals');
 const User = require('../models/User');
 const Commitment = require('../models/Commitments');
 const sendEmail = require('./email');
-const Log = require('../models/Logs');
 const { sendDealMessage } = require('./message');
 const DealsBatchExpirationTemplate = require('./EmailTemplates/DealsBatchExpirationTemplate');
 const mongoose = require('mongoose');
 const { isFeatureEnabled } = require('../config/features');
+const { logSystemAction } = require('./collaboratorLogger');
 
 const { FRONTEND_URL } = process.env;
 
@@ -139,10 +139,17 @@ const checkDealExpiration = async () => {
             await deal.save();
           }
           
-          await Log.create({
-            message: `${timeRemaining} expiration notification sent to ${user.name} for ${totalDeals} deal(s) ${hasMoreDeals ? `(showing ${dealsToShow.length})` : ''}`,
-            type: 'info',
-            user_id: user._id
+          await logSystemAction('deal_expiration_notification_sent', 'notification', {
+            message: `${timeRemaining} expiration notification sent to ${user.name} for ${totalDeals} deal(s)`,
+            userId: user._id,
+            userName: user.name,
+            userEmail: user.email,
+            dealsCount: totalDeals,
+            dealsShown: dealsToShow.length,
+            hasMoreDeals,
+            timeRemaining,
+            severity: 'low',
+            tags: ['notification', 'deal-expiration', 'automated']
           });
           
           // Send SMS if phone number exists (still sending individual SMS for better readability)
@@ -164,10 +171,18 @@ const checkDealExpiration = async () => {
               } catch (error) {
                 console.error(`Failed to send expiration notice to ${user.name}:`, error);
                 // Log SMS failure but continue execution
-                await Log.create({
+                await logSystemAction('sms_expiration_notification_failed', 'notification', {
                   message: `Failed to send SMS ${interval.label} notification to ${user.name} for deal "${deal.name}"`,
-                  type: 'warning',
-                  user_id: user._id
+                  userId: user._id,
+                  userName: user.name,
+                  dealName: deal.name,
+                  dealId: deal._id,
+                  timeRemaining: interval.label,
+                  error: {
+                    message: error.message
+                  },
+                  severity: 'medium',
+                  tags: ['sms', 'deal-expiration', 'failed']
                 }).catch(err => console.error('Log creation failed:', err));
               }
             }
@@ -185,10 +200,19 @@ const checkDealExpiration = async () => {
           }
 
         } catch (error) {
-          await Log.create({
-            message: `Failed to send ${interval.label} batch expiration notification to ${user.email} for deals`,
-            type: 'error',
-            user_id: user._id
+          await logSystemAction('batch_expiration_notification_failed', 'notification', {
+            message: `Failed to send ${interval.label} batch expiration notification to ${user.email}`,
+            userId: user._id,
+            userName: user.name,
+            userEmail: user.email,
+            timeRemaining: interval.label,
+            dealsCount: deals.length,
+            error: {
+              message: error.message,
+              stack: error.stack
+            },
+            severity: 'high',
+            tags: ['notification', 'deal-expiration', 'batch', 'failed']
           });
           console.error('Batch notification error:', error);
         }
@@ -208,10 +232,16 @@ const checkDealExpiration = async () => {
         await deal.save();
         
         // Log the deal deactivation
-        await Log.create({
+        await logSystemAction('deal_auto_deactivated', 'deal', {
           message: `Deal "${deal.name}" automatically deactivated due to expiration`,
-          type: 'info',
-          user_id: deal.distributor ? deal.distributor._id : null
+          dealName: deal.name,
+          dealId: deal._id,
+          resourceId: deal._id,
+          resourceName: deal.name,
+          distributorId: deal.distributor,
+          expirationDate: deal.dealEndsAt,
+          severity: 'medium',
+          tags: ['deal', 'expiration', 'automated', 'status-change']
         });
       }
     }
@@ -221,9 +251,14 @@ const checkDealExpiration = async () => {
     // Only try to create log if database is connected
     if (mongoose.connection.readyState === 1) {
       try {
-        await Log.create({
+        await logSystemAction('deal_expiration_check_failed', 'system', {
           message: `Error in deal expiration check: ${error.message}`,
-          type: 'error'
+          error: {
+            message: error.message,
+            stack: error.stack
+          },
+          severity: 'critical',
+          tags: ['system', 'deal-expiration', 'automated', 'critical-error']
         });
       } catch (logError) {
         console.error('Failed to create error log:', logError);

@@ -2,14 +2,13 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const User = require('../../models/User');
-const Log = require('../../models/Logs'); // Add this line to require the Logs model
 const sendEmail = require('../../utils/email');
 const registerEmail = require('../../utils/EmailTemplates/registerEmail');
 const otpEmail = require('../../utils/EmailTemplates/otpEmail');
-const Announcement = require('../../models/Announcments'); // Add this line to require the Announcement model
+const Announcement = require('../../models/Announcments');
 const { sendAuthMessage } = require('../../utils/message');
 const { generateUniqueLoginKey } = require('../../utils/loginKeyGenerator');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logSystemAction } = require('../../utils/collaboratorLogger');
 
 // Helper function to generate OTP
 const generateOTP = () => {
@@ -62,11 +61,24 @@ router.post('/', async (req, res) => {
         await newUser.save();
 
         // Log the action
-        await logCollaboratorAction(req, 'register', 'user registration', {
-            targetUserName: newUser.name,
-            targetUserEmail: newUser.email,
-            targetUserRole: newUser.role,
-            additionalInfo: 'New registration initiated, awaiting email verification'
+        await logSystemAction('user_registration', 'user', {
+            message: `New registration: ${newUser.name} (${newUser.email}) - ${newUser.role}`,
+            userId: newUser._id,
+            userName: newUser.name,
+            userEmail: newUser.email,
+            userRole: newUser.role,
+            resourceId: newUser._id,
+            resourceName: newUser.name,
+            businessName: newUser.businessName,
+            contactPerson: newUser.contactPerson,
+            severity: 'low',
+            tags: ['registration', 'user', 'email-verification-pending'],
+            metadata: {
+                ipAddress: req.ip || req.headers['x-forwarded-for'] || 'Unknown',
+                userAgent: req.headers['user-agent'] || 'Unknown',
+                verificationRequired: true,
+                otpSent: true
+            }
         });
 
         // Send verification email with OTP
@@ -140,10 +152,21 @@ router.post('/verify-email', async (req, res) => {
         await user.save();
         
         // Log successful verification
-        await logCollaboratorAction(req, 'verify_email', 'email verification', {
-            targetUserName: user.name,
-            targetUserEmail: user.email,
-            additionalInfo: 'Email verification completed successfully'
+        await logSystemAction('email_verification_successful', 'authentication', {
+            message: `Email verification successful: ${user.name} (${user.email})`,
+            userId: user._id,
+            userName: user.name,
+            userEmail: user.email,
+            userRole: user.role,
+            resourceId: user._id,
+            resourceName: user.name,
+            severity: 'low',
+            tags: ['email-verification', 'authentication', 'success'],
+            metadata: {
+                ipAddress: req.ip || req.headers['x-forwarded-for'] || 'Unknown',
+                userAgent: req.headers['user-agent'] || 'Unknown',
+                accountActivated: true
+            }
         });
         
         // Send welcome email

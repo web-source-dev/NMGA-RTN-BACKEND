@@ -3,9 +3,8 @@ const router = express.Router();
 const User = require('../models/User');
 const Deal = require('../models/Deals');
 const Commitment = require('../models/Commitments');
-const Log = require('../models/Logs');
 const { isDistributorAdmin, getCurrentUserContext } = require('../middleware/auth');
-const { logCollaboratorAction } = require('../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../utils/collaboratorLogger');
 
 // Get all members who have committed to a distributor's deals
 router.get('/members', isDistributorAdmin, async (req, res) => {
@@ -68,9 +67,7 @@ router.get('/members', isDistributorAdmin, async (req, res) => {
     } catch (error) {
         console.error('Error fetching members:', error);
         
-        await logCollaboratorAction(req, 'view_distributor_members_failed', 'members', { 
-            additionalInfo: `Error: ${error.message}`
-        });
+        await logError(req, 'view_distributor_members', 'members', error);
         
         res.status(500).json({
             success: false,
@@ -117,9 +114,8 @@ router.get('/member/:memberId', isDistributorAdmin, async (req, res) => {
     } catch (error) {
         console.error('Error fetching member details:', error);
         
-        await logCollaboratorAction(req, 'view_distributor_member_details_failed', 'member', { 
-            memberId: req.params.memberId,
-            additionalInfo: `Error: ${error.message}`
+        await logError(req, 'view_distributor_member_details', 'member', error, {
+            memberId: req.params.memberId
         });
         
         res.status(500).json({
@@ -189,8 +185,8 @@ router.get('/top-members', isDistributorAdmin, async (req, res) => {
     } catch (error) {
         console.error('Error fetching top members:', error);
         
-        await logCollaboratorAction(req, 'view_distributor_top_members_failed', 'members', { 
-            additionalInfo: `Error: ${error.message}`
+        await logError(req, 'view_distributor_top_members', 'members', error, {
+            limit: req.query.limit
         });
         
         res.status(500).json({

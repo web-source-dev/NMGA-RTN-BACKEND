@@ -2,10 +2,9 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const Deal = require('../../models/Deals');
-const Log = require('../../models/Logs');
 const Supplier = require('../../models/Suppliers');
 const { isAuthenticated, getCurrentUserContext } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 router.get('/deal/:dealId', isAuthenticated, async (req, res) => {
   try {
@@ -116,9 +115,8 @@ router.get('/deal/:dealId', isAuthenticated, async (req, res) => {
     res.status(200).json(response);
   } catch (err) {
     console.error(err);
-    await logCollaboratorAction(req, 'view_single_deal_failed', 'deal', { 
-      dealId: req.params.dealId,
-      additionalInfo: `Error: ${err.message}`
+    await logError(req, 'view_single_deal', 'deal', err, {
+      dealId: req.params.dealId
     });
     res.status(500).json({ message: 'Server error' });
   }

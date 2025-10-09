@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const User = require('../../models/User');
 const { isAuthenticated } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 const sendEmail = require('../../utils/email');
 const collaboratorCredentialsTemplate = require('../../utils/EmailTemplates/collaboratorCredentialsTemplate');
 
@@ -24,6 +24,7 @@ router.get('/', isAuthenticated, async (req, res) => {
     res.json(user.collaborators || []);
   } catch (error) {
     console.error('Error fetching collaborators:', error);
+    await logError(req, 'view_collaborators', 'collaborators list', error);
     res.status(500).json({ message: 'Error fetching collaborators' });
   }
 });
@@ -139,6 +140,11 @@ router.post('/', isAuthenticated, async (req, res) => {
     });
   } catch (error) {
     console.error('Error adding collaborator:', error);
+    await logError(req, 'add_collaborator', 'collaborator', error, {
+      collaboratorName: req.body.name,
+      collaboratorRole: req.body.role,
+      collaboratorEmail: req.body.email
+    });
     res.status(500).json({ message: 'Error adding collaborator' });
   }
 });
@@ -233,6 +239,9 @@ router.put('/:collaboratorId', isAuthenticated, async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating collaborator:', error);
+    await logError(req, 'update_collaborator', 'collaborator', error, {
+      collaboratorId: req.params.collaboratorId
+    });
     res.status(500).json({ message: 'Error updating collaborator' });
   }
 });
@@ -271,6 +280,9 @@ router.delete('/:collaboratorId', isAuthenticated, async (req, res) => {
     res.json({ message: 'Collaborator deleted successfully' });
   } catch (error) {
     console.error('Error deleting collaborator:', error);
+    await logError(req, 'delete_collaborator', 'collaborator', error, {
+      collaboratorId: req.params.collaboratorId
+    });
     res.status(500).json({ message: 'Error deleting collaborator' });
   }
 });
@@ -305,6 +317,9 @@ router.get('/:collaboratorId', isAuthenticated, async (req, res) => {
     res.json(collaboratorResponse);
   } catch (error) {
     console.error('Error fetching collaborator:', error);
+    await logError(req, 'view_collaborator', 'collaborator details', error, {
+      collaboratorId: req.params.collaboratorId
+    });
     res.status(500).json({ message: 'Error fetching collaborator' });
   }
 });
@@ -348,6 +363,9 @@ router.patch('/:collaboratorId/activate', isAuthenticated, async (req, res) => {
     });
   } catch (error) {
     console.error('Error activating collaborator:', error);
+    await logError(req, 'activate_collaborator', 'collaborator', error, {
+      collaboratorId: req.params.collaboratorId
+    });
     res.status(500).json({ message: 'Error activating collaborator' });
   }
 });

@@ -1,11 +1,11 @@
 const express = require("express");
 const Favorite = require("../../models/Favorite");
-const Log = require("../../models/Logs");
 const router = express.Router();
 const Deal = require('../../models/Deals');
 const User = require('../../models/User');
 const { createNotification } = require('../Common/Notification');
 const { isAuthenticated, isMemberAdmin, getCurrentUserContext } = require('../../middleware/auth');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Toggle favorite (Add/Remove)
 router.post("/toggle", isMemberAdmin, async (req, res) => {
@@ -50,17 +50,10 @@ router.post("/toggle", isMemberAdmin, async (req, res) => {
         });
 
         // Log the action
-        let logMessage;
-        if (isImpersonating) {
-          logMessage = `Admin ${originalUser.name} (${originalUser.email}) removed deal "${deal.name}" from favorites on behalf of member ${currentUser.name} (${currentUser.email})`;
-        } else {
-          logMessage = `${currentUser.name} removed deal "${deal.name}" from favorites`;
-        }
-
-        await Log.create({
-          message: logMessage,
-          type: 'info',
-          user_id: currentUser.id // Always the member's ID, whether admin is impersonating or not
+        await logCollaboratorAction(req, 'remove_favorite', 'favorite', {
+          dealTitle: deal.name,
+          dealId: dealId,
+          resourceId: dealId
         });
   
         const updatedFavorites = await Favorite.find({ userId: user_id }).select("dealId");
@@ -85,17 +78,10 @@ router.post("/toggle", isMemberAdmin, async (req, res) => {
         });
 
         // Log the action
-        let logMessage;
-        if (isImpersonating) {
-          logMessage = `Admin ${originalUser.name} (${originalUser.email}) added deal "${deal.name}" to favorites on behalf of member ${currentUser.name} (${currentUser.email})`;
-        } else {
-          logMessage = `${currentUser.name} added deal "${deal.name}" to favorites`;
-        }
-
-        await Log.create({
-          message: logMessage,
-          type: 'info',
-          user_id: currentUser.id // Always the member's ID, whether admin is impersonating or not
+        await logCollaboratorAction(req, 'add_favorite', 'favorite', {
+          dealTitle: deal.name,
+          dealId: dealId,
+          resourceId: dealId
         });
   
         const updatedFavorites = await Favorite.find({ userId: user_id }).select("dealId");
@@ -105,13 +91,10 @@ router.post("/toggle", isMemberAdmin, async (req, res) => {
         });
       }
     } catch (error) {
-      const { currentUser } = getCurrentUserContext(req);
-      await Log.create({
-        message: `Error managing favorites for user ${currentUser?.name || 'unknown'} - ${error.message}`,
-        type: 'error',
-        user_id: currentUser.id
-      });
       console.error("Error toggling favorite:", error);
+      await logError(req, 'toggle_favorite', 'favorite', error, {
+        dealId: req.body.dealId
+      });
       res.status(500).json({ 
         error: "Internal Server Error",
         message: "An error occurred while updating favorites" 
@@ -129,6 +112,7 @@ router.get("/", isAuthenticated, async (req, res) => {
       res.json(favorites);
     } catch (error) {
       console.error("Error fetching favorites:", error);
+      await logError(req, 'view_favorites', 'favorites', error);
       res.status(500).json({ 
         error: "Internal Server Error",
         message: "An error occurred while fetching favorites" 

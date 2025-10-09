@@ -3,10 +3,14 @@ const router = express.Router();
 const User = require('../../models/User');
 const Deal = require('../../models/Deals');
 const { isAdmin } = require('../../middleware/auth');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Get user statistics overview
 router.get('/overview', isAdmin, async (req, res) => {
     try {
+        // Log the action
+        await logCollaboratorAction(req, 'view_user_stats', 'user statistics');
+        
         const total = await User.countDocuments();
         const active = await User.countDocuments({ isBlocked: false });
         const blocked = await User.countDocuments({ isBlocked: true });
@@ -61,6 +65,7 @@ router.get('/overview', isAdmin, async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching user stats:', error);
+        await logError(req, 'view_user_stats', 'user statistics', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -68,7 +73,12 @@ router.get('/overview', isAdmin, async (req, res) => {
 // Get recent users with more details
 router.get('/recent', isAdmin, async (req, res) => {
     try {
+        // Log the action
         const limit = Math.min(parseInt(req.query.limit) || 5, 20);
+        await logCollaboratorAction(req, 'view_recent_users', 'recent users', {
+            limit
+        });
+        
         const recentUsers = await User.find()
             .sort({ createdAt: -1 })
             .limit(limit)
@@ -89,6 +99,9 @@ router.get('/recent', isAdmin, async (req, res) => {
         res.json(formattedUsers);
     } catch (error) {
         console.error('Error fetching recent users:', error);
+        await logError(req, 'view_recent_users', 'recent users', error, {
+            limit: Math.min(parseInt(req.query.limit) || 5, 20)
+        });
         res.status(500).json({ error: 'Internal server error' });
     }
 });

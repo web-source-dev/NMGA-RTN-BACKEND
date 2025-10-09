@@ -5,7 +5,7 @@ const Commitment = require('../../models/Commitments');
 const User = require('../../models/User');
 const Deal = require('../../models/Deals');
 const { createNotification } = require('../Common/Notification');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Helper function to check if user has access to the chat
 const hasAccessToChat = async (userId, commitment) => {
@@ -83,6 +83,9 @@ router.get('/:commitmentId', async (req, res) => {
     res.json(messages);
   } catch (error) {
     console.error('Error fetching chat messages:', error);
+    await logError(req, 'view_chat_messages', 'chat messages', error, {
+      commitmentId: req.params.commitmentId
+    });
     res.status(500).json({ 
       error: 'Internal Server Error',
       message: 'Failed to fetch chat messages'
@@ -191,6 +194,10 @@ router.post('/:commitmentId', async (req, res) => {
     res.json(chatMessage);
   } catch (error) {
     console.error('Error sending message:', error);
+    await logError(req, 'send_chat_message', 'chat message', error, {
+      commitmentId: req.params.commitmentId,
+      senderId: req.body.senderId
+    });
     res.status(500).json({ 
       error: 'Internal Server Error',
       message: 'Failed to send message'
@@ -280,6 +287,10 @@ router.put('/:commitmentId/read', async (req, res) => {
     res.json({ message: 'Messages marked as read' });
   } catch (error) {
     console.error('Error marking messages as read:', error);
+    await logError(req, 'mark_messages_read', 'chat messages', error, {
+      commitmentId: req.params.commitmentId,
+      userId: req.body.userId
+    });
     res.status(500).json({ 
       error: 'Internal Server Error',
       message: 'Failed to mark messages as read'

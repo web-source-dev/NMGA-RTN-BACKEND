@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Deal = require('../../models/Deals');
 const { isAuthenticated, isAdmin } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 router.get('/',isAdmin, async (req, res) => {
   try {
@@ -193,9 +193,7 @@ router.get('/',isAdmin, async (req, res) => {
     res.json(dealsWithSavings);
   } catch (error) {
     console.error('Error in fetchAllDeals:', error);
-    await logCollaboratorAction(req, 'view_admin_all_deals_failed', 'deals', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'view_admin_all_deals', 'deals', error);
     res.status(500).json({ message: 'Error fetching deals', error: error.message });
   }
 });
@@ -476,8 +474,10 @@ router.get('/buy', isAuthenticated, async (req, res) => {
     });
   } catch (error) {
     console.error('Error in fetchAllDeals/buy:', error);
-    await logCollaboratorAction(req, 'view_available_deals_failed', 'deals', { 
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'view_available_deals', 'deals', error, {
+      page: req.query.page,
+      searchQuery: req.query.searchQuery,
+      category: req.query.category
     });
     res.status(500).json({ message: 'Error fetching deals', error: error.message });
   }

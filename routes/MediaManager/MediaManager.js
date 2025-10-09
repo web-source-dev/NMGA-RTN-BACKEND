@@ -6,7 +6,7 @@ const cloudinary = require("cloudinary").v2;
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const mongoose = require("mongoose");
 const { isAuthenticated, getCurrentUserContext } = require("../../middleware/auth");
-const { logCollaboratorAction } = require("../../utils/collaboratorLogger");
+const { logCollaboratorAction, logError } = require("../../utils/collaboratorLogger");
 
 // Configure Cloudinary
 cloudinary.config({
@@ -80,8 +80,9 @@ router.get("/media", isAuthenticated, async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching media:", error);
-    await logCollaboratorAction(req, 'view_media_library_failed', 'media', { 
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'view_media_library', 'media', error, {
+      folder: req.query.folder,
+      type: req.query.type
     });
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -99,10 +100,6 @@ router.get("/media/:id", isAuthenticated, async (req, res) => {
     });
     
     if (!media) {
-      await logCollaboratorAction(req, 'view_media_item_failed', 'media', { 
-        mediaId: req.params.id,
-        additionalInfo: 'Media item not found'
-      });
       return res.status(404).json({ message: "Media not found" });
     }
     
@@ -110,15 +107,14 @@ router.get("/media/:id", isAuthenticated, async (req, res) => {
       mediaId: req.params.id,
       mediaName: media.name,
       mediaType: media.type,
-      additionalInfo: `Viewed media item: ${media.name}`
+      resourceId: media._id
     });
     
     res.status(200).json(media);
   } catch (error) {
     console.error("Error fetching media item:", error);
-    await logCollaboratorAction(req, 'view_media_item_failed', 'media', { 
-      mediaId: req.params.id,
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'view_media_item', 'media', error, {
+      mediaId: req.params.id
     });
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -131,9 +127,6 @@ router.post("/upload", isAuthenticated, upload.single("file"), async (req, res) 
     const userId = currentUser.id;
     
     if (!req.file) {
-      await logCollaboratorAction(req, 'upload_media_failed', 'media', { 
-        additionalInfo: 'No file uploaded'
-      });
       return res.status(400).json({ message: "No file uploaded" });
     }
     
@@ -182,8 +175,9 @@ router.post("/upload", isAuthenticated, upload.single("file"), async (req, res) 
     res.status(201).json(media);
   } catch (error) {
     console.error("Error uploading media:", error);
-    await logCollaboratorAction(req, 'upload_media_failed', 'media', { 
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'upload_media', 'media', error, {
+      fileName: req.file?.originalname,
+      folderId: req.body.folderId
     });
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -198,10 +192,7 @@ router.post("/upload/direct", isAuthenticated, async (req, res) => {
     const { name, url, type, folderId = "root", tags = [], isPinned = false, isPublic = false } = req.body;
     
     if (!url) {
-      await logCollaboratorAction(req, 'upload_media_direct_failed', 'media', { 
-        additionalInfo: 'URL is required for direct upload'
-      });
-      return res.status(400).json({ message: "URL is required" });
+        return res.status(400).json({ message: "URL is required" });
     }
     
     // Create media record directly
@@ -232,8 +223,9 @@ router.post("/upload/direct", isAuthenticated, async (req, res) => {
     res.status(201).json(media);
   } catch (error) {
     console.error("Error with direct upload:", error);
-    await logCollaboratorAction(req, 'upload_media_direct_failed', 'media', { 
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'upload_media_direct', 'media', error, {
+      mediaName: req.body.name,
+      folderId: req.body.folderId
     });
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -252,10 +244,6 @@ router.put("/media/:id", isAuthenticated, async (req, res) => {
     });
     
     if (!media) {
-      await logCollaboratorAction(req, 'update_media_failed', 'media', { 
-        mediaId: req.params.id,
-        additionalInfo: 'Media item not found'
-      });
       return res.status(404).json({ message: "Media not found" });
     }
     
@@ -283,9 +271,8 @@ router.put("/media/:id", isAuthenticated, async (req, res) => {
     res.status(200).json(media);
   } catch (error) {
     console.error("Error updating media:", error);
-    await logCollaboratorAction(req, 'update_media_failed', 'media', { 
-      mediaId: req.params.id,
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'update_media', 'media', error, {
+      mediaId: req.params.id
     });
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -303,10 +290,6 @@ router.delete("/media/:id", isAuthenticated, async (req, res) => {
     });
     
     if (!media) {
-      await logCollaboratorAction(req, 'delete_media_failed', 'media', { 
-        mediaId: req.params.id,
-        additionalInfo: 'Media item not found'
-      });
       return res.status(404).json({ message: "Media not found" });
     }
     
@@ -330,9 +313,8 @@ router.delete("/media/:id", isAuthenticated, async (req, res) => {
     res.status(200).json({ message: "Media deleted successfully" });
   } catch (error) {
     console.error("Error deleting media:", error);
-    await logCollaboratorAction(req, 'delete_media_failed', 'media', { 
-      mediaId: req.params.id,
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'delete_media', 'media', error, {
+      mediaId: req.params.id
     });
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -365,8 +347,8 @@ router.post("/folders", isAuthenticated, async (req, res) => {
     res.status(201).json(folder);
   } catch (error) {
     console.error("Error creating folder:", error);
-    await logCollaboratorAction(req, 'create_folder_failed', 'folder', { 
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'create_folder', 'folder', error, {
+      folderName: req.body.name
     });
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -400,8 +382,8 @@ router.get("/folders", isAuthenticated, async (req, res) => {
     res.status(200).json(folders);
   } catch (error) {
     console.error("Error fetching folders:", error);
-    await logCollaboratorAction(req, 'view_folders_failed', 'folders', { 
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'view_folders', 'folders', error, {
+      parentId: req.query.parentId
     });
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -422,10 +404,6 @@ router.put("/folders/:id", isAuthenticated, async (req, res) => {
     });
     
     if (!folder) {
-      await logCollaboratorAction(req, 'update_folder_failed', 'folder', { 
-        folderId: req.params.id,
-        additionalInfo: 'Folder not found'
-      });
       return res.status(404).json({ message: "Folder not found" });
     }
     
@@ -455,9 +433,8 @@ router.put("/folders/:id", isAuthenticated, async (req, res) => {
     res.status(200).json(updatedFolder);
   } catch (error) {
     console.error("Error updating folder:", error);
-    await logCollaboratorAction(req, 'update_folder_failed', 'folder', { 
-      folderId: req.params.id,
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'update_folder', 'folder', error, {
+      folderId: req.params.id
     });
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -477,10 +454,6 @@ router.delete("/folders/:id", isAuthenticated, async (req, res) => {
     });
     
     if (!folder) {
-      await logCollaboratorAction(req, 'delete_folder_failed', 'folder', { 
-        folderId: req.params.id,
-        additionalInfo: 'Folder not found'
-      });
       return res.status(404).json({ message: "Folder not found" });
     }
     
@@ -529,9 +502,8 @@ router.delete("/folders/:id", isAuthenticated, async (req, res) => {
     });
   } catch (error) {
     console.error("Error deleting folder:", error);
-    await logCollaboratorAction(req, 'delete_folder_failed', 'folder', { 
-      folderId: req.params.id,
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'delete_folder', 'folder', error, {
+      folderId: req.params.id
     });
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -565,9 +537,7 @@ router.get("/stats", isAuthenticated, async (req, res) => {
     res.status(200).json(stats);
   } catch (error) {
     console.error("Error fetching media stats:", error);
-    await logCollaboratorAction(req, 'view_media_stats_failed', 'media', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'view_media_stats', 'media', error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 });

@@ -3,12 +3,12 @@ const User = require('../models/User');
 const Commitment = require('../models/Commitments');
 const sendEmail = require('./email');
 const { sendSMS } = require('./message');
-const Log = require('../models/Logs');
 const MemberReminderTemplate = require('./EmailTemplates/MemberReminderTemplate');
 const DealMessages = require('./MessageTemplates/DealMessages');
 const { isFeatureEnabled } = require('../config/features');
 const { shouldSendCommitmentWindowOpeningReminders, shouldSendCommitmentWindowClosingReminders, getCurrentMonthSchedule } = require('./monthlySchedule');
 const mongoose = require('mongoose');
+const { logSystemAction } = require('./collaboratorLogger');
 
 /**
  * Check for commitment windows that are opening tomorrow
@@ -99,10 +99,16 @@ const checkCommitmentWindowOpeningReminders = async () => {
         }
 
         // Log the reminder
-        await Log.create({
+        await logSystemAction('member_commitment_window_opening_reminder_sent', 'notification', {
           message: `Commitment window opening reminder sent to ${member.name} for ${currentMonth.month} ${currentMonth.year}`,
-          type: 'info',
-          user_id: member._id
+          userId: member._id,
+          userName: member.name,
+          userEmail: member.email,
+          commitmentMonth: `${currentMonth.month} ${currentMonth.year}`,
+          commitmentStartDate: currentMonth.commitmentStart,
+          commitmentEndDate: currentMonth.commitmentEnd,
+          severity: 'low',
+          tags: ['notification', 'member', 'commitment-window', 'opening', 'automated']
         });
 
         console.log(`✅ Sent opening reminder to ${member.name} for ${currentMonth.month} ${currentMonth.year}`);
@@ -110,10 +116,17 @@ const checkCommitmentWindowOpeningReminders = async () => {
       } catch (error) {
         console.error(`Failed to send opening reminder to ${member.name}:`, error);
         
-        await Log.create({
+        await logSystemAction('member_commitment_window_opening_reminder_failed', 'notification', {
           message: `Failed to send commitment window opening reminder to ${member.name}`,
-          type: 'error',
-          user_id: member._id
+          userId: member._id,
+          userName: member.name,
+          userEmail: member.email,
+          error: {
+            message: error.message,
+            stack: error.stack
+          },
+          severity: 'high',
+          tags: ['notification', 'member', 'commitment-window', 'failed']
         });
       }
     }
@@ -123,9 +136,14 @@ const checkCommitmentWindowOpeningReminders = async () => {
     
     if (mongoose.connection.readyState === 1) {
       try {
-        await Log.create({
+        await logSystemAction('commitment_window_opening_reminder_check_failed', 'system', {
           message: `Error in commitment window opening reminder check: ${error.message}`,
-          type: 'error'
+          error: {
+            message: error.message,
+            stack: error.stack
+          },
+          severity: 'critical',
+          tags: ['system', 'member', 'commitment-window', 'critical-error']
         });
       } catch (logError) {
         console.error('Failed to create error log:', logError);
@@ -243,10 +261,18 @@ const checkCommitmentWindowClosingReminders = async () => {
         }
 
         // Log the reminder
-        await Log.create({
-          message: `${timeRemaining} commitment window closing reminder sent to ${member.name} for ${currentMonth.month} ${currentMonth.year} (${hasCommitments ? 'has commitments' : 'no commitments'})`,
-          type: 'info',
-          user_id: member._id
+        await logSystemAction('member_commitment_window_closing_reminder_sent', 'notification', {
+          message: `${timeRemaining} commitment window closing reminder sent to ${member.name} for ${currentMonth.month} ${currentMonth.year}`,
+          userId: member._id,
+          userName: member.name,
+          userEmail: member.email,
+          commitmentMonth: `${currentMonth.month} ${currentMonth.year}`,
+          timeRemaining,
+          hasCommitments,
+          commitmentsCount: memberCommitments.length,
+          commitmentEndDate: currentMonth.commitmentEnd,
+          severity: 'low',
+          tags: ['notification', 'member', 'commitment-window', 'closing', 'automated']
         });
 
         console.log(`✅ Sent ${timeRemaining} closing reminder to ${member.name} for ${currentMonth.month} ${currentMonth.year}`);
@@ -254,10 +280,18 @@ const checkCommitmentWindowClosingReminders = async () => {
       } catch (error) {
         console.error(`Failed to send ${timeRemaining} closing reminder to ${member.name}:`, error);
         
-        await Log.create({
+        await logSystemAction('member_commitment_window_closing_reminder_failed', 'notification', {
           message: `Failed to send ${timeRemaining} commitment window closing reminder to ${member.name}`,
-          type: 'error',
-          user_id: member._id
+          userId: member._id,
+          userName: member.name,
+          userEmail: member.email,
+          timeRemaining,
+          error: {
+            message: error.message,
+            stack: error.stack
+          },
+          severity: 'high',
+          tags: ['notification', 'member', 'commitment-window', 'failed']
         });
       }
     }
@@ -267,9 +301,14 @@ const checkCommitmentWindowClosingReminders = async () => {
     
     if (mongoose.connection.readyState === 1) {
       try {
-        await Log.create({
+        await logSystemAction('commitment_window_closing_reminder_check_failed', 'system', {
           message: `Error in commitment window closing reminder check: ${error.message}`,
-          type: 'error'
+          error: {
+            message: error.message,
+            stack: error.stack
+          },
+          severity: 'critical',
+          tags: ['system', 'member', 'commitment-window', 'critical-error']
         });
       } catch (logError) {
         console.error('Failed to create error log:', logError);

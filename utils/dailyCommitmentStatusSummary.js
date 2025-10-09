@@ -3,7 +3,7 @@ const User = require('../models/User');
 const sendEmail = require('./email');
 const { generateDailyCommitmentStatusSummary } = require('./EmailTemplates/DailyCommitmentStatusSummaryTemplate');
 const { isFeatureEnabled } = require('../config/features');
-const Log = require('../models/Logs');
+const { logSystemAction, logError } = require('./collaboratorLogger');
 
 /**
  * Send daily commitment status summary emails to members
@@ -109,10 +109,17 @@ const sendDailyCommitmentStatusSummaries = async () => {
         console.error(`❌ Failed to send summary email to user ${userId}:`, error);
         
         // Log the error
-        await Log.create({
+        await logSystemAction('send_daily_commitment_status_summary_failed', 'email', {
           message: `Failed to send daily commitment status summary to user ${userId}: ${error.message}`,
-          type: 'error',
-          user_id: null
+          userId: userId,
+          userName: userData.user?.name,
+          userEmail: userData.user?.email,
+          error: {
+            message: error.message,
+            stack: error.stack
+          },
+          severity: 'high',
+          tags: ['email', 'daily-summary', 'commitment-status']
         });
       }
     }
@@ -121,20 +128,28 @@ const sendDailyCommitmentStatusSummaries = async () => {
     const summaryMessage = `Daily commitment status summary completed. Emails sent: ${emailsSent}, Failed: ${emailsFailed}`;
     console.log(`📊 ${summaryMessage}`);
     
-    await Log.create({
+    await logSystemAction('send_daily_commitment_status_summaries_completed', 'email', {
       message: summaryMessage,
-      type: 'success',
-      user_id: null
+      emailsSent,
+      emailsFailed,
+      totalStatusChanges: statusChanges.length,
+      totalUsers: Object.keys(userStatusChanges).length,
+      severity: emailsFailed > 0 ? 'medium' : 'low',
+      tags: ['email', 'daily-summary', 'commitment-status', 'automated']
     });
 
   } catch (error) {
     console.error('❌ Error in daily commitment status summary process:', error);
     
     // Log the error
-    await Log.create({
+    await logSystemAction('daily_commitment_status_summary_failed', 'system', {
       message: `Daily commitment status summary process failed: ${error.message}`,
-      type: 'error',
-      user_id: null
+      error: {
+        message: error.message,
+        stack: error.stack
+      },
+      severity: 'critical',
+      tags: ['email', 'daily-summary', 'system-error']
     });
   }
 };

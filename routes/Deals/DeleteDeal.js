@@ -2,11 +2,10 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const Deal = require('../../models/Deals');
-const Log = require('../../models/Logs');
 const { createNotification, notifyUsersByRole } = require('../Common/Notification');
 const { broadcastDealUpdate } = require('../../utils/dealUpdates');
 const { isDistributorAdmin, getCurrentUserContext, isAdmin } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 router.delete('/:dealId', isDistributorAdmin, async (req, res) => {
   try {
@@ -51,6 +50,9 @@ router.delete('/:dealId', isDistributorAdmin, async (req, res) => {
 
   } catch (err) {
     console.error(err);
+    await logError(req, 'delete_deal', 'deal', err, {
+      dealId: req.params.dealId
+    });
     res.status(500).json({
       success: false,
       message: 'An error occurred while deleting the deal'
@@ -101,6 +103,10 @@ router.delete('/admin/:dealId', isAdmin, async (req, res) => {
 
   } catch (err) {
     console.error(err);
+    await logError(req, 'delete_deal', 'deal', err, {
+      dealId: req.params.dealId,
+      isAdmin: true
+    });
     res.status(500).json({
       success: false,
       message: 'An error occurred while deleting the deal'

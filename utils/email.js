@@ -1,7 +1,7 @@
 const SibApiV3Sdk = require('@getbrevo/brevo');
-const Log = require('../models/Logs');
 const User = require('../models/User');
 const { isFeatureEnabled } = require('../config/features');
+const { logSystemAction } = require('./collaboratorLogger');
 
 const sendEmail = async (to, subject, html) => {
   // Check if email feature is disabled
@@ -28,18 +28,21 @@ const sendEmail = async (to, subject, html) => {
     });
 
     // Log disabled email attempt
-    await Log.create({ 
-      message: `🚫 EMAIL FEATURE DISABLED
-        📅 Time: ${timestamp}
-        👥 Recipients: ${uniqueEmails.join(', ')}
-        📧 Primary Emails: ${primaryEmails.join(', ')}
-        📧 Additional Emails: ${uniqueEmails.filter(email => !primaryEmails.includes(email)).join(', ') || 'None'}
-        📝 Subject: ${subject}
-        📊 Content Length: ${html?.length || 0} characters
-        🏢 Sender: New Mexico Grocers Association
-        ⚠️ Status: Feature Disabled - Email Not Sent`, 
-      type: 'warning', 
-      user_id: null 
+    await logSystemAction('email_disabled', 'email', { 
+      message: `Email feature disabled - Would have sent to ${uniqueEmails.length} recipient(s)`,
+      recipients: uniqueEmails,
+      primaryEmails,
+      additionalEmails: uniqueEmails.filter(email => !primaryEmails.includes(email)),
+      subject,
+      contentLength: html?.length || 0,
+      sender: 'New Mexico Grocers Association',
+      timestamp,
+      severity: 'low',
+      tags: ['email', 'disabled-feature'],
+      metadata: {
+        featureDisabled: true,
+        wouldHaveSent: true
+      }
     });
     
     return { messageId: 'disabled', to: uniqueEmails, subject: subject }; // Return mock success response
@@ -101,19 +104,24 @@ const sendEmail = async (to, subject, html) => {
     });
 
     // Create detailed success log
-    await Log.create({ 
-      message: `📧 EMAIL SENT SUCCESSFULLY
-        📅 Time: ${timestamp}
-        📨 Message ID: ${result.messageId}
-        👥 Recipients: ${uniqueEmails.join(', ')}
-        📧 Primary Emails: ${primaryEmails.join(', ')}
-        📧 Additional Emails: ${uniqueEmails.filter(email => !primaryEmails.includes(email)).join(', ') || 'None'}
-        📝 Subject: ${subject}
-        📊 Content Length: ${html?.length || 0} characters
-        🏢 Sender: ${sendSmtpEmail.sender.name} (${sendSmtpEmail.sender.email})
-        ✅ Status: Delivered`, 
-      type: 'success', 
-      user_id: null 
+    await logSystemAction('email_sent_successfully', 'email', { 
+      message: `Email sent successfully to ${uniqueEmails.length} recipient(s): ${subject}`,
+      messageId: result.messageId,
+      recipients: uniqueEmails,
+      primaryEmails,
+      additionalEmails: uniqueEmails.filter(email => !primaryEmails.includes(email)),
+      subject,
+      contentLength: html?.length || 0,
+      senderName: sendSmtpEmail.sender.name,
+      senderEmail: sendSmtpEmail.sender.email,
+      timestamp,
+      severity: 'low',
+      tags: ['email', 'communication', 'sent'],
+      metadata: {
+        deliveryStatus: 'delivered',
+        recipientCount: uniqueEmails.length,
+        hasAdditionalEmails: uniqueEmails.length > primaryEmails.length
+      }
     });
 
     return result;
@@ -122,20 +130,27 @@ const sendEmail = async (to, subject, html) => {
     console.error('Failed to send email:', error);
     
     // Create detailed error log
-    await Log.create({ 
-      message: `❌ EMAIL SEND FAILED
-        📅 Time: ${timestamp}
-        👥 Recipients: ${uniqueEmails.join(', ')}
-        📧 Primary Emails: ${primaryEmails.join(', ')}
-        📧 Additional Emails: ${uniqueEmails.filter(email => !primaryEmails.includes(email)).join(', ') || 'None'}
-        📝 Subject: ${subject}
-        📊 Content Length: ${html?.length || 0} characters
-        🏢 Sender: ${sendSmtpEmail.sender.name} (${sendSmtpEmail.sender.email})
-        ❌ Error: ${error.message}
-        🔍 Error Code: ${error.code || 'Unknown'}
-        📋 Error Details: ${JSON.stringify(error.response?.data || {})}`, 
-      type: 'error', 
-      user_id: null 
+    await logSystemAction('email_send_failed', 'email', { 
+      message: `Failed to send email to ${uniqueEmails.length} recipient(s): ${subject}`,
+      recipients: uniqueEmails,
+      primaryEmails,
+      additionalEmails: uniqueEmails.filter(email => !primaryEmails.includes(email)),
+      subject,
+      contentLength: html?.length || 0,
+      senderName: sendSmtpEmail.sender.name,
+      senderEmail: sendSmtpEmail.sender.email,
+      timestamp,
+      error: {
+        message: error.message,
+        code: error.code || 'Unknown',
+        response: error.response?.data
+      },
+      severity: 'high',
+      tags: ['email', 'communication', 'failed'],
+      metadata: {
+        apiError: true,
+        errorDetails: JSON.stringify(error.response?.data || {})
+      }
     });
     throw error;
   }

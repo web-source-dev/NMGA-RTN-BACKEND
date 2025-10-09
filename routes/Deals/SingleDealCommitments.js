@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Commitment = require('../../models/Commitments');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Get all commitments for a specific deal
 router.get('/:dealId', async (req, res) => {
@@ -32,9 +32,10 @@ router.get('/:dealId', async (req, res) => {
             totalCommitments
         });
     } catch (error) {
-        await logCollaboratorAction(req, 'view_deal_commitments_failed', 'commitments', { 
+        await logError(req, 'view_deal_commitments', 'commitments', error, {
             dealId: req.params.dealId,
-            additionalInfo: `Error: ${error.message}`
+            page: req.query.page,
+            limit: req.query.limit
         });
         res.status(500).json({ message: 'Error fetching commitments', error: error.message });
     }

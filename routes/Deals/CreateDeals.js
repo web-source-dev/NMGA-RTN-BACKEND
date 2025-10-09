@@ -2,10 +2,9 @@ const express = require('express');
 const router = express.Router();
 const Deal = require('../../models/Deals');
 const User = require('../../models/User');
-const Log = require('../../models/Logs');
 const { broadcastDealUpdate } = require('../../utils/dealUpdates');
 const { isDistributorAdmin, getCurrentUserContext } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Create a new deal
 router.post('/create', isDistributorAdmin, async (req, res) => {
@@ -173,21 +172,6 @@ router.post('/create', isDistributorAdmin, async (req, res) => {
     const avgSavingsPerUnit = avgOriginalCost - avgDiscountPrice;
     const avgSavingsPercentage = ((avgSavingsPerUnit / avgOriginalCost) * 100).toFixed(2);
 
-    // Create log entry with admin impersonation details if applicable
-    if (isImpersonating) {
-      await Log.create({
-        message: `Admin ${originalUser.name} (${originalUser.email}) created new deal "${newDeal.name}" on behalf of distributor ${currentUser.name} (${currentUser.email}) with ${sizes.length} size options and min quantity for discount ${newDeal.minQtyForDiscount} - Avg Savings: ${avgSavingsPercentage}%`,
-        type: 'success',
-        user_id: distributor
-      });
-    } else {
-      await Log.create({
-        message: `Distributor ${user.name} created new deal "${newDeal.name}" with ${sizes.length} size options and min quantity for discount ${newDeal.minQtyForDiscount} - Avg Savings: ${avgSavingsPercentage}%`,
-        type: 'success',
-        user_id: distributor
-      });
-    }
-
     // Add calculated fields to response
     const response = {
       ...newDeal.toObject(),
@@ -199,29 +183,23 @@ router.post('/create', isDistributorAdmin, async (req, res) => {
     await logCollaboratorAction(req, 'create_deal', 'deal', {
       dealTitle: name,
       dealId: newDeal._id,
+      resourceId: newDeal._id,
+      resourceName: name,
       category: category,
-      additionalInfo: `Created deal with ${sizes.length} size options`
+      sizesCount: sizes.length,
+      minQtyForDiscount: newDeal.minQtyForDiscount,
+      avgSavingsPercentage: avgSavingsPercentage
     });
 
     res.status(201).json(response);
 
   } catch (error) {
     console.error('Error creating deal:', error);
-    const { currentUser, originalUser, isImpersonating } = getCurrentUserContext(req);
-    
-    if (isImpersonating) {
-      await Log.create({
-        message: `Admin ${originalUser.name} (${originalUser.email}) failed to create deal on behalf of distributor ${currentUser.name} (${currentUser.email}) - Error: ${error.message}`,
-        type: 'error',
-        user_id: distributor
-      });
-    } else {
-      await Log.create({
-        message: `Failed to create deal - Error: ${error.message}`,
-        type: 'error',
-        user_id: distributor
-      });
-    }
+    await logError(req, 'create_deal', 'deal', error, {
+      dealName: req.body.name,
+      category: req.body.category,
+      sizesCount: req.body.sizes?.length || 0
+    });
     res.status(500).json({
       message: 'Error creating deal'
     });

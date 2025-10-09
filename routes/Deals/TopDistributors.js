@@ -4,8 +4,7 @@ const User = require('../../models/User');
 const Commitment = require('../../models/Commitments');
 const Deal = require('../../models/Deals');
 const { isAdmin, getCurrentUserContext } = require('../../middleware/auth');
-const Log = require('../../models/Logs');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Get all distributors with their performance metrics (admin only)
 router.get('/all-distributors/:userRole', isAdmin, async (req, res) => {
@@ -36,9 +35,7 @@ router.get('/all-distributors/:userRole', isAdmin, async (req, res) => {
     console.error('Error fetching distributors:', error);
     
     // Log the error
-    await logCollaboratorAction(req, 'view_all_distributors_failed', 'distributors', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'view_all_distributors', 'distributors', error);
     
     return res.status(500).json({ 
       success: false,
@@ -118,9 +115,7 @@ router.get('/top-distributors/:userRole', isAdmin, async (req, res) => {
     console.error('Error fetching top distributors:', error);
     
     // Log the error
-    await logCollaboratorAction(req, 'view_top_distributors_failed', 'distributors', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'view_top_distributors', 'distributors', error);
     
     return res.status(500).json({ 
       success: false,

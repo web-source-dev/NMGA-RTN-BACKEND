@@ -4,9 +4,8 @@ const Supplier = require("../../models/Suppliers");
 const User = require("../../models/User");
 const Commitment = require("../../models/Commitments");
 const Deal = require("../../models/Deals");
-const Log = require("../../models/Logs");
 const { isDistributorAdmin, getCurrentUserContext } = require("../../middleware/auth");
-const { logCollaboratorAction } = require("../../utils/collaboratorLogger");
+const { logCollaboratorAction, logError } = require("../../utils/collaboratorLogger");
 
 // Get all suppliers
 router.get("/", async (req, res) => {
@@ -43,9 +42,7 @@ router.get("/by-distributor", isDistributorAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error fetching suppliers by distributor:', error);
     
-    await logCollaboratorAction(req, 'view_suppliers_failed', 'suppliers', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'view_suppliers', 'suppliers', error);
     
     res.status(500).json({
       success: false,
@@ -97,8 +94,9 @@ router.post("/", isDistributorAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error creating supplier:', error);
     
-    await logCollaboratorAction(req, 'create_supplier_failed', 'supplier', { 
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'create_supplier', 'supplier', error, {
+      supplierName: req.body.name,
+      supplierEmail: req.body.email
     });
     
     res.status(500).json({
@@ -202,8 +200,9 @@ router.put("/assign/:supplierId", isDistributorAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error assigning supplier:', error);
     
-    await logCollaboratorAction(req, 'assign_supplier_failed', 'supplier', { 
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'assign_supplier', 'supplier', error, {
+      supplierId: req.params.supplierId,
+      memberId: req.body.memberId
     });
     
     res.status(500).json({
@@ -277,8 +276,9 @@ router.put("/unassign/:supplierId", isDistributorAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error unassigning supplier:', error);
     
-    await logCollaboratorAction(req, 'unassign_supplier_failed', 'supplier', { 
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'unassign_supplier', 'supplier', error, {
+      supplierId: req.params.supplierId,
+      memberId: req.body.memberId
     });
     
     res.status(500).json({
@@ -381,8 +381,9 @@ router.get("/committed-members", isDistributorAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error fetching committed members:', error);
     
-    await logCollaboratorAction(req, 'view_committed_members_failed', 'members', { 
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'view_committed_members', 'members', error, {
+      month: req.query.month,
+      year: req.query.year
     });
     
     res.status(500).json({
@@ -486,9 +487,8 @@ router.get("/export-member-data/:memberId", isDistributorAdmin, async (req, res)
   } catch (error) {
     console.error('Error exporting member data:', error);
     
-    await logCollaboratorAction(req, 'export_member_data_failed', 'member', { 
-      memberId: req.params.memberId,
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'export_member_data', 'member', error, {
+      memberId: req.params.memberId
     });
     
     res.status(500).json({
@@ -640,9 +640,8 @@ router.get("/export-supplier-data/:supplierId", isDistributorAdmin, async (req, 
   } catch (error) {
     console.error('Error exporting supplier data:', error);
     
-    await logCollaboratorAction(req, 'export_supplier_data_failed', 'supplier', { 
-      supplierId: req.params.supplierId,
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'export_supplier_data', 'supplier', error, {
+      supplierId: req.params.supplierId
     });
     
     res.status(500).json({

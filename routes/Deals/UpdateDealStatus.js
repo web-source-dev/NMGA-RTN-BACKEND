@@ -2,12 +2,11 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const Deal = require('../../models/Deals');
-const Log = require('../../models/Logs');
 const User = require('../../models/User');
 const { createNotification, notifyUsersByRole } = require('../Common/Notification');
 const { broadcastDealUpdate, broadcastSingleDealUpdate } = require('../../utils/dealUpdates');
 const { isDistributorAdmin, getCurrentUserContext, isAdmin } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 router.patch('/:dealId/status', isDistributorAdmin, async (req, res) => {
   try {
@@ -15,19 +14,10 @@ router.patch('/:dealId/status', isDistributorAdmin, async (req, res) => {
     const { status } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(dealId)) {
-      await logCollaboratorAction(req, 'update_deal_status_failed', 'deal', { 
-        dealId: dealId,
-        additionalInfo: 'Invalid deal ID provided for status update'
-      });
       return res.status(400).json({ message: 'Invalid deal ID' });
     }
 
     if (!['active', 'inactive'].includes(status)) {
-      await logCollaboratorAction(req, 'update_deal_status_failed', 'deal', { 
-        dealId: dealId,
-        status: status,
-        additionalInfo: `Invalid status "${status}" attempted for deal update`
-      });
       return res.status(400).json({ message: 'Invalid status' });
     }
 
@@ -35,10 +25,6 @@ router.patch('/:dealId/status', isDistributorAdmin, async (req, res) => {
       .populate('distributor', 'name _id');
       
     if (!deal) {
-      await logCollaboratorAction(req, 'update_deal_status_failed', 'deal', { 
-        dealId: dealId,
-        additionalInfo: 'Attempt to update status of non-existent deal'
-      });
       return res.status(404).json({ message: 'Deal not found' });
     }
 
@@ -86,14 +72,11 @@ router.patch('/:dealId/status', isDistributorAdmin, async (req, res) => {
     });
     res.status(200).json(deal);
   } catch (err) {
-    const deal = await Deal.findById(req.params.dealId);
-    const dealName = deal ? deal.name : 'unknown deal';
-    await logCollaboratorAction(req, 'update_deal_status_failed', 'deal', { 
-      dealId: req.params.dealId,
-      dealName: dealName,
-      additionalInfo: `Error: ${err.message}`
-    });
     console.error(err);
+    await logError(req, 'update_deal_status', 'deal', err, {
+      dealId: req.params.dealId,
+      status: req.body.status
+    });
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -104,19 +87,10 @@ router.patch('/:dealId/status/admin', isAdmin, async (req, res) => {
     const { status } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(dealId)) {
-      await logCollaboratorAction(req, 'update_deal_status_admin_failed', 'deal', { 
-        dealId: dealId,
-        additionalInfo: 'Invalid deal ID provided for admin status update'
-      });
       return res.status(400).json({ message: 'Invalid deal ID' });
     }
 
     if (!['active', 'inactive'].includes(status)) {
-      await logCollaboratorAction(req, 'update_deal_status_admin_failed', 'deal', { 
-        dealId: dealId,
-        status: status,
-        additionalInfo: `Invalid status "${status}" attempted for admin deal update`
-      });
       return res.status(400).json({ message: 'Invalid status' });
     }
 
@@ -124,10 +98,6 @@ router.patch('/:dealId/status/admin', isAdmin, async (req, res) => {
       .populate('distributor', 'name _id');
       
     if (!deal) {
-      await logCollaboratorAction(req, 'update_deal_status_admin_failed', 'deal', { 
-        dealId: dealId,
-        additionalInfo: 'Attempt to update status of non-existent deal by admin'
-      });
       return res.status(404).json({ message: 'Deal not found' });
     }
 
@@ -175,14 +145,11 @@ router.patch('/:dealId/status/admin', isAdmin, async (req, res) => {
     });
     res.status(200).json(deal);
   } catch (err) {
-    const deal = await Deal.findById(req.params.dealId);
-    const dealName = deal ? deal.name : 'unknown deal';
-    await logCollaboratorAction(req, 'update_deal_status_admin_failed', 'deal', { 
-      dealId: req.params.dealId,
-      dealName: dealName,
-      additionalInfo: `Error: ${err.message}`
-    });
     console.error(err);
+    await logError(req, 'update_deal_status_admin', 'deal', err, {
+      dealId: req.params.dealId,
+      status: req.body.status
+    });
     res.status(500).json({ message: 'Server error' });
   }
 });

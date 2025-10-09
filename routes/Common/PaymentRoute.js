@@ -4,10 +4,18 @@ const Payment = require('../../models/Paymentmodel');
 const Deal = require('../../models/Deals');
 const User = require('../../models/User');
 const { isAdmin } = require('../../middleware/auth');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
+
 // Get recent payments
 router.get('/recent', isAdmin, async (req, res) => {
     try {
         const limit = Math.min(parseInt(req.query.limit) || 5, 20);
+        
+        // Log the action
+        await logCollaboratorAction(req, 'view_recent_payments', 'recent payments', {
+            limit
+        });
+        
         const payments = await Payment.find()
             .sort({ createdAt: -1 })
             .limit(limit)
@@ -27,6 +35,9 @@ router.get('/recent', isAdmin, async (req, res) => {
         res.json(formattedPayments);
     } catch (error) {
         console.error('Error fetching recent payments:', error);
+        await logError(req, 'view_recent_payments', 'recent payments', error, {
+            limit: Math.min(parseInt(req.query.limit) || 5, 20)
+        });
         res.status(500).json({ error: 'Internal server error' });
     }
 });

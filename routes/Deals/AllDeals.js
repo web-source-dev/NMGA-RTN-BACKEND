@@ -3,7 +3,6 @@ const router = express.Router();
 const Deal = require('../../models/Deals');
 const Commitment = require('../../models/Commitments');
 const User = require('../../models/User');
-const Log = require('../../models/Logs');
 const CommitmentStatusChange = require('../../models/CommitmentStatusChange');
 // Send email notifications to all users
 const sendEmail = require('../../utils/email');
@@ -11,7 +10,7 @@ const CommitmentNotificationTemplate = require('../../utils/EmailTemplates/Commi
 const { broadcastDealUpdate, broadcastSingleDealUpdate } = require('../../utils/dealUpdates');
 const { isDistributorAdmin,isAdmin, getCurrentUserContext } = require('../../middleware/auth');
 const { format } = require('date-fns');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Helper function to store commitment status changes for daily summary
 const storeCommitmentStatusChange = async (commitment, deal, newStatus, distributorResponse, processedBy, processedById) => {
@@ -242,6 +241,11 @@ router.get('/distributor-deals', isDistributorAdmin, async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching distributor deals:', error);
+        await logError(req, 'view_distributor_deals', 'deals list', error, {
+            search: req.query.search,
+            month: req.query.month,
+            status: req.query.status
+        });
         res.status(500).json({ success: false, message: 'Error fetching deals' });
     }
 });
@@ -448,6 +452,12 @@ router.get('/admin-all-deals', isAdmin, async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching deals for admin:', error);
+        await logError(req, 'view_admin_all_deals', 'deals list', error, {
+            search: req.query.search,
+            month: req.query.month,
+            status: req.query.status,
+            distributorId: req.query.distributorId
+        });
         res.status(500).json({ success: false, message: 'Error fetching deals' });
     }
 });
@@ -543,8 +553,8 @@ router.post('/bulk-approve-commitments', isDistributorAdmin, async (req, res) =>
         console.error('Error bulk approving commitments:', error);
         
         // Log the error
-        await logCollaboratorAction(req, 'bulk_approve_commitments_failed', 'commitments', {
-            additionalInfo: `Error: ${error.message}`
+        await logError(req, 'bulk_approve_commitments', 'commitments', error, {
+            dealId: req.body.dealId
         });
         
         res.status(500).json({ success: false, message: 'Error processing bulk approval' });
@@ -624,8 +634,8 @@ router.post('/bulk-decline-commitments', isDistributorAdmin, async (req, res) =>
         console.error('Error bulk declining commitments:', error);
         
         // Log the error
-        await logCollaboratorAction(req, 'bulk_decline_commitments_failed', 'commitments', {
-            additionalInfo: `Error: ${error.message}`
+        await logError(req, 'bulk_decline_commitments', 'commitments', error, {
+            dealId: req.body.dealId
         });
         
         res.status(500).json({ success: false, message: 'Error processing bulk decline' });
@@ -655,12 +665,21 @@ router.get('/deal-commitments/:dealId', isDistributorAdmin, async (req, res) => 
             .populate('userId', 'name email businessName')
             .sort({ createdAt: -1 });
 
+        // Log the action
+        await logCollaboratorAction(req, 'view_deal_commitments', 'deal commitments', {
+            dealId: dealId,
+            totalCommitments: commitments.length
+        });
+
         res.json({
             success: true,
             commitments
         });
     } catch (error) {
         console.error('Error fetching deal commitments:', error);
+        await logError(req, 'view_deal_commitments', 'deal commitments', error, {
+            dealId: req.params.dealId
+        });
         res.status(500).json({ success: false, message: 'Error fetching commitments' });
     }
 });
@@ -750,8 +769,9 @@ router.post('/update-commitment-status', isDistributorAdmin, async (req, res) =>
         console.error('Error updating commitment status:', error);
         
         // Log the error
-        await logCollaboratorAction(req, 'update_commitment_status_failed', 'commitment', {
-            additionalInfo: `Error: ${error.message}`
+        await logError(req, 'update_commitment_status', 'commitment', error, {
+            commitmentId: req.body.commitmentId,
+            status: req.body.status
         });
         
         res.status(500).json({ success: false, message: 'Error updating commitment status' });
@@ -922,8 +942,8 @@ router.get('/deal-analytics/:dealId', isDistributorAdmin, async (req, res) => {
         console.error('Error fetching deal analytics:', error);
         
         // Log the error
-        await logCollaboratorAction(req, 'view_deal_analytics_failed', 'deal analytics', {
-            additionalInfo: `Error: ${error.message}`
+        await logError(req, 'view_deal_analytics', 'deal analytics', error, {
+            dealId: req.params.dealId
         });
         
         res.status(500).json({ success: false, message: 'Error fetching analytics data' });
@@ -951,12 +971,23 @@ router.get('/deal-commitments-admin/:dealId', isAdmin, async (req, res) => {
             .populate('userId', 'name email businessName')
             .sort({ createdAt: -1 });
 
+        // Log the action
+        await logCollaboratorAction(req, 'view_deal_commitments', 'deal commitments', {
+            dealId: dealId,
+            totalCommitments: commitments.length,
+            isAdmin: true
+        });
+
         res.json({
             success: true,
             commitments
         });
     } catch (error) {
         console.error('Error fetching deal commitments:', error);
+        await logError(req, 'view_deal_commitments', 'deal commitments', error, {
+            dealId: req.params.dealId,
+            isAdmin: true
+        });
         res.status(500).json({ success: false, message: 'Error fetching commitments' });
     }
 });
@@ -1047,7 +1078,11 @@ router.post('/bulk-approve-commitments-admin', isAdmin, async (req, res) => {
             modifiedCount: result.modifiedCount
         });
     } catch (error) {
-        console.error('Error bulk approving commitments:', error);        
+        console.error('Error bulk approving commitments:', error);
+        await logError(req, 'bulk_approve_commitments_admin', 'commitments', error, {
+            dealId: req.body.dealId,
+            distributorId: req.body.distributorId
+        });
         res.status(500).json({ success: false, message: 'Error processing bulk approval' });
     }
 });
@@ -1121,7 +1156,10 @@ router.post('/bulk-decline-commitments-admin', isAdmin, async (req, res) => {
         });
     } catch (error) {
         console.error('Error bulk declining commitments:', error);
-        
+        await logError(req, 'bulk_decline_commitments_admin', 'commitments', error, {
+            dealId: req.body.dealId,
+            distributorId: req.body.distributorId
+        });
         res.status(500).json({ success: false, message: 'Error processing bulk decline' });
     }
 });
@@ -1279,7 +1317,10 @@ router.get('/deal-analytics-admin/:dealId', isAdmin, async (req, res) => {
 
     } catch (error) {
         console.error('Error fetching deal analytics:', error);
-        
+        await logError(req, 'view_deal_analytics', 'deal analytics', error, {
+            dealId: req.params.dealId,
+            isAdmin: true
+        });
         res.status(500).json({ success: false, message: 'Error fetching analytics data' });
     }
 });

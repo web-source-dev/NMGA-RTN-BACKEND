@@ -6,9 +6,8 @@ const csv = require('csv-parser');
 const fs = require('fs');
 const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const User = require('../../models/User');
-const Log = require('../../models/Logs');
 const { isDistributorAdmin, getCurrentUserContext } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Configure multer for file upload with error handling
 const storage = multer.diskStorage({
@@ -700,8 +699,8 @@ router.post('/upload', isDistributorAdmin, upload.single('file'), async (req, re
         console.error('Upload error:', error); // Log the error
         
         // Log the error
-        await logCollaboratorAction(req, 'bulk_upload_deals_failed', 'deals bulk upload', {
-            additionalInfo: `Error: ${error.message}`
+        await logError(req, 'bulk_upload_deals', 'deals bulk upload', error, {
+            fileName: req.file?.originalname
         });
         
         // Clean up file on error

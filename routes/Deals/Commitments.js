@@ -1,14 +1,13 @@
 const express = require("express");
 const Commitment = require("../../models/Commitments");
 const Deal = require("../../models/Deals");
-const Log = require("../../models/Logs");
 const User = require('../../models/User');
 const sendEmail = require('../../utils/email');
 const { sendDealMessage } = require('../../utils/message');
 const { createNotification, notifyUsersByRole } = require('../Common/Notification');
 const DailyCommitmentSummary = require('../../models/DailyCommitmentSummary');
 const { isAuthenticated, isMemberAdmin, getCurrentUserContext, isAdmin } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 const router = express.Router();
 
 // Create a new commitment or update existing one (Get Deal)
@@ -432,19 +431,6 @@ router.post("/buy/:dealId", isMemberAdmin, async (req, res) => {
       return `${sc.size}: ${sc.quantity} units at $${sc.pricePerUnit.toFixed(2)} each${tierInfo}`;
     }).join(', ');
 
-    // Log the commitment action
-    let logMessage;
-    if (isImpersonating) {
-      logMessage = `Admin ${originalUser.name} (${originalUser.email}) made commitment to deal "${deal.name}" on behalf of member ${currentUser.name} (${currentUser.email}) - Total: ${processedSizeCommitments.reduce((total, sc) => total + sc.quantity, 0)} units, $${totalPrice.toFixed(2)}`;
-    } else {
-      logMessage = `Member ${currentUser.name} (${currentUser.email}) committed to deal "${deal.name}" - Total: ${processedSizeCommitments.reduce((total, sc) => total + sc.quantity, 0)} units, $${totalPrice.toFixed(2)}`;
-    }
-
-    await Log.create({
-      message: logMessage,
-      type: 'success',
-      user_id: currentUser.id // Always the member's ID, whether admin is impersonating or not
-    });
 
     await createNotification({
       recipientId: deal.distributor,
@@ -482,17 +468,11 @@ router.post("/buy/:dealId", isMemberAdmin, async (req, res) => {
       updatedDeal: deal,
     });
   } catch (error) {
-    const deal = await Deal.findById(req.params.dealId);
-    const user = await User.findById(req.body.userId);
-    const dealName = deal ? deal.name : 'unknown deal';
-    const userName = user ? user.name : 'unknown user';
-
-    await Log.create({
-      message: `Failed commitment by ${userName} to "${dealName}" - Error: ${error.message}`,
-      type: 'error',
-      user_id: req.body.userId
-    });
     console.error("Error committing to deal:", error);
+    await logError(req, 'create_commitment', 'commitment', error, {
+      dealId: req.params.dealId,
+      sizeCommitments: req.body.sizeCommitments?.length || 0
+    });
     res.status(500).json({ 
       error: "Internal Server Error",
       message: "An error occurred while processing your request" 
@@ -513,11 +493,6 @@ router.put("/update-status", async (req, res) => {
     // Validate the status
     const validStatuses = ["pending", "approved", "declined", "cancelled"];
     if (!validStatuses.includes(status)) {
-      await Log.create({
-        message: `Warning: Invalid status "${status}" attempted for commitment`,
-        type: 'warning',
-        user_id: req.user?.id
-      });
       return res.status(400).json({
         error: "Invalid Status",
         message: "Status must be one of: pending, approved, declined, cancelled"
@@ -530,11 +505,6 @@ router.put("/update-status", async (req, res) => {
       .populate('userId');
 
     if (!commitment) {
-      await Log.create({
-        message: `Warning: Attempt to update non-existent commitment`,
-        type: 'warning',
-        user_id: req.user?.id
-      });
       return res.status(404).json({
         error: "Not found",
         message: "Commitment not found"
@@ -631,19 +601,6 @@ router.put("/update-status", async (req, res) => {
       ` (with ${commitment.appliedDiscountTier.tierDiscount}% discount at ${commitment.appliedDiscountTier.tierQuantity}+ units)` : 
       '';
 
-    // Create detailed log entry
-    const logMessage = `Commitment for "${commitment.dealId.name}" by ${commitment.userId.name} changed from ${oldStatus} to ${status}${
-      commitment.modifiedByDistributor ? 
-      ` with modifications - Original: ${originalSizeDetails}, Modified: ${modifiedSizeDetails}, Total: $${commitment.modifiedTotalPrice}` : 
-      ` - Details: ${originalSizeDetails}${discountTierMessage}, Total: $${commitment.totalPrice}`
-    }`;
-
-    await Log.create({
-      message: logMessage,
-      type: 'info',
-      user_id: commitment.userId._id
-    });
-
     // Notify member about status change
     await createNotification({
       recipientId: commitment.userId._id,
@@ -724,6 +681,10 @@ router.put("/update-status", async (req, res) => {
 
   } catch (error) {
     console.error("Error updating commitment status:", error);
+    await logError(req, 'update_commitment_status', 'commitment', error, {
+      commitmentId: req.body.commitmentId,
+      status: req.body.status
+    });
     res.status(500).json({
       error: "Internal Server Error",
       message: "An error occurred while updating commitment status"
@@ -750,6 +711,7 @@ router.get("/", isAuthenticated, async (req, res) => {
     res.json(commitments);
   } catch (error) {
     console.error("Error fetching commitments:", error);
+    await logError(req, 'view_user_commitments', 'user commitments', error);
     res.status(500).json({ 
       error: "Internal Server Error",
       message: "An error occurred while fetching your commitments" 
@@ -793,6 +755,9 @@ router.get("/fetch/:userId", isAuthenticated, async (req, res) => {
     res.json(commitments);
   } catch (error) {
     console.error("Error fetching commitments:", error);
+    await logError(req, 'view_user_commitments', 'commitments', error, {
+      userId: req.params.userId
+    });
     res.status(500).json({ 
       error: "Internal Server Error",
       message: "An error occurred while fetching commitments"
@@ -826,6 +791,9 @@ router.get("/distributor-commitments/:distributorId", async (req, res) => {
     res.json(commitments);
   } catch (error) {
     console.error("Error fetching distributor commitments:", error);
+    await logError(req, 'view_distributor_commitments', 'commitments', error, {
+      distributorId: req.params.distributorId
+    });
     res.status(500).json({ 
       error: "Internal Server Error",
       message: "An error occurred while fetching distributor commitments"
@@ -871,6 +839,9 @@ router.get("/details/:commitmentId", async (req, res) => {
         res.json(commitment);
     } catch (error) {
         console.error("Error fetching commitment details:", error);
+        await logError(req, 'view_commitment_details', 'commitment details', error, {
+            commitmentId: req.params.commitmentId
+        });
         res.status(500).json({
             error: "Internal Server Error",
             message: "An error occurred while fetching commitment details"
@@ -903,6 +874,7 @@ router.get("/admin/all-commitments", isAdmin, async (req, res) => {
     res.json(commitments);
   } catch (error) {
     console.error("Error fetching all commitments:", error);
+    await logError(req, 'view_all_commitments', 'commitments', error);
     res.status(500).json({ 
       error: "Internal Server Error",
       message: "An error occurred while fetching all commitments"
@@ -1081,6 +1053,7 @@ router.get("/admin/statistics", isAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching commitment statistics:", error);
+    await logError(req, 'view_commitment_statistics', 'commitment statistics', error);
     res.status(500).json({
       error: "Internal Server Error",
       message: "An error occurred while fetching commitment statistics"
@@ -1102,6 +1075,7 @@ router.get("/user-stats", isAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching user stats:", error);
+    await logError(req, 'view_user_stats', 'user statistics', error);
     res.status(500).json({ error: "Server error" });
   }
 });

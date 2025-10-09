@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const Deal = require('../../models/Deals');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 router.get('/', async (req, res) => {
     try {
@@ -39,6 +39,7 @@ router.get('/', async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching latest deals:', error);
+        await logError(req, 'view_latest_deals', 'latest deals', error);
         res.status(500).json({
             success: false,
             message: 'Error fetching latest deals',

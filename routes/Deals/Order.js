@@ -6,6 +6,7 @@ const archiver = require('archiver');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Get all approved commitments for a distributor
 router.get('/distributor-orders/:userId', async (req, res) => {
@@ -72,6 +73,14 @@ router.get('/distributor-orders/:userId', async (req, res) => {
         .populate('userId', 'name email phone businessName address')
         .populate('dealId', 'name description size discountPrice originalCost images')
         .sort(sortOptions);
+
+        // Log the action
+        await logCollaboratorAction(req, 'view_distributor_orders', 'orders', {
+            totalOrders: commitments.length,
+            startDate: startDate || 'all',
+            endDate: endDate || 'all',
+            status: status || 'all'
+        });
 
         // Get unique products from deals
         const products = deals.map(deal => ({
@@ -425,6 +434,9 @@ router.get('/distributor-orders/:userId', async (req, res) => {
             products
         });
     } catch (error) {
+        await logError(req, 'view_distributor_orders', 'orders', error, {
+            userId: req.params.userId
+        });
         res.status(500).json({ message: "Error fetching orders", error: error.message });
     }
 });
@@ -495,8 +507,16 @@ router.get('/order-details/:orderId', async (req, res) => {
             return res.status(404).json({ message: "Order not found" });
         }
 
+        await logCollaboratorAction(req, 'view_order_details', 'order', {
+            orderId: req.params.orderId,
+            resourceId: order._id
+        });
+
         res.status(200).json({ order });
     } catch (error) {
+        await logError(req, 'view_order_details', 'order', error, {
+            orderId: req.params.orderId
+        });
         res.status(500).json({ message: "Error fetching order details", error: error.message });
     }
 });
@@ -517,8 +537,17 @@ router.patch('/update-delivery/:orderId', async (req, res) => {
             { new: true }
         );
 
+        await logCollaboratorAction(req, 'update_delivery_status', 'order', {
+            orderId: req.params.orderId,
+            deliveryStatus: deliveryStatus,
+            resourceId: order._id
+        });
+
         res.status(200).json({ order });
     } catch (error) {
+        await logError(req, 'update_delivery_status', 'order', error, {
+            orderId: req.params.orderId
+        });
         res.status(500).json({ message: "Error updating delivery status", error: error.message });
     }
 });
@@ -537,8 +566,18 @@ router.patch('/update-status/:orderId', async (req, res) => {
             { new: true }
         ).populate('userId dealId');
         
+        await logCollaboratorAction(req, 'update_order_status', 'order', {
+            orderId: req.params.orderId,
+            status: status,
+            resourceId: order._id
+        });
+
         res.status(200).json({ order });
     } catch (error) {
+        await logError(req, 'update_order_status', 'order', error, {
+            orderId: req.params.orderId,
+            status: req.body.status
+        });
         res.status(500).json({ message: "Error updating order status", error: error.message });
     }
 });
@@ -557,8 +596,18 @@ router.patch('/update-payment/:orderId', async (req, res) => {
             { new: true }
         ).populate('userId dealId');
         
+        await logCollaboratorAction(req, 'update_payment_status', 'order', {
+            orderId: req.params.orderId,
+            paymentStatus: paymentStatus,
+            resourceId: order._id
+        });
+
         res.status(200).json({ order });
     } catch (error) {
+        await logError(req, 'update_payment_status', 'order', error, {
+            orderId: req.params.orderId,
+            paymentStatus: req.body.paymentStatus
+        });
         res.status(500).json({ message: "Error updating payment status", error: error.message });
     }
 });
@@ -609,8 +658,16 @@ router.get('/generate-invoice/:orderId', async (req, res) => {
         doc.fontSize(10).text(`Status: ${order.paymentStatus}`);
         doc.text(`Payment Method: ${order.paymentMethod || 'Not specified'}`);
 
+        await logCollaboratorAction(req, 'generate_invoice', 'invoice', {
+            orderId: req.params.orderId,
+            resourceId: order._id
+        });
+
         doc.end();
     } catch (error) {
+        await logError(req, 'generate_invoice', 'invoice', error, {
+            orderId: req.params.orderId
+        });
         res.status(500).json({ message: "Error generating invoice", error: error.message });
     }
 });
@@ -701,11 +758,20 @@ router.get('/distributor-orders/:userId/filtered', async (req, res) => {
             }, {})
         };
 
+        await logCollaboratorAction(req, 'view_filtered_orders', 'orders', {
+            userId: req.params.userId,
+            totalOrders: commitments.length,
+            filters: Object.keys(req.query).length
+        });
+
         res.status(200).json({ 
             commitments,
             analytics: filteredAnalytics
         });
     } catch (error) {
+        await logError(req, 'view_filtered_orders', 'orders', error, {
+            userId: req.params.userId
+        });
         res.status(500).json({ message: "Error filtering orders", error: error.message });
     }
 });
@@ -775,6 +841,14 @@ router.get('/distributor-orders/:userId/download', async (req, res) => {
             .populate('userId', 'name email phone businessName address')
             .populate('dealId', 'name description size discountPrice originalCost images')
             .sort({ [filterParams.sortBy || 'createdAt']: filterParams.sortOrder === 'desc' ? -1 : 1 });
+
+        // Log the download action
+        await logCollaboratorAction(req, 'download_orders', 'orders', {
+            userId: req.params.userId,
+            format: format,
+            totalOrders: orders.length,
+            includeAnalytics: includeAnalytics === 'true'
+        });
 
         // Calculate analytics if requested
         let analytics = null;
@@ -1210,6 +1284,10 @@ router.get('/distributor-orders/:userId/download', async (req, res) => {
         }
     } catch (error) {
         console.error('Error generating download:', error);
+        await logError(req, 'download_orders', 'orders', error, {
+            userId: req.params.userId,
+            format: req.query.format
+        });
         res.status(500).json({ message: "Error generating download", error: error.message });
     }
 });

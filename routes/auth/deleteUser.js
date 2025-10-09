@@ -1,9 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../../models/User');
-const Log = require('../../models/Logs');
 const { isAdmin } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError, logWithChanges } = require('../../utils/collaboratorLogger');
 
 router.delete('/:userId', isAdmin, async (req, res) => {
   try {
@@ -34,35 +33,33 @@ router.delete('/:userId', isAdmin, async (req, res) => {
       hasFavorites: user.favorites && user.favorites.length > 0
     };
 
-    // Log the action before deletion
-    await logCollaboratorAction(req, 'delete_user', 'user management', {
+    // Log the action before deletion with full user details
+    await logCollaboratorAction(req, 'delete_user', 'user', {
       targetUserName: user.name,
       targetUserEmail: user.email,
       targetUserRole: user.role,
-      userStats: userStats,
-      additionalInfo: 'User account permanently deleted'
-    });
-
-    // Delete the user
-    await User.findByIdAndDelete(userId);
-
-    // Create a log entry for the deletion
-    const log = new Log({
-      message: `User account deleted: ${user.name} (${user.email}) - Role: ${user.role}`,
-      type: 'warning',
-      user_id: req.user.id, // Admin who performed the deletion
+      resourceId: user._id,
+      resourceName: user.name,
+      severity: 'critical',
+      tags: ['deletion', 'user-management', 'permanent'],
       metadata: {
         deletedUser: {
           id: user._id,
           name: user.name,
           email: user.email,
           role: user.role,
-          businessName: user.businessName
+          businessName: user.businessName,
+          contactPerson: user.contactPerson,
+          phone: user.phone
         },
-        userStats: userStats
-      }
+        userStats: userStats,
+        hasActiveRelationships: Object.values(userStats).some(v => v === true)
+      },
+      additionalInfo: 'User account permanently deleted'
     });
-    await log.save();
+
+    // Delete the user
+    await User.findByIdAndDelete(userId);
 
     res.json({ 
       message: 'User deleted successfully', 
@@ -79,9 +76,10 @@ router.delete('/:userId', isAdmin, async (req, res) => {
     console.error('Error deleting user:', error);
     
     // Log the error
-    await logCollaboratorAction(req, 'delete_user_failed', 'user management', {
+    await logError(req, 'delete_user', 'user', error, {
       targetUserId: req.params.userId,
-      additionalInfo: `Error: ${error.message}`
+      severity: 'critical',
+      tags: ['deletion', 'user-management', 'failed']
     });
 
     res.status(500).json({ 

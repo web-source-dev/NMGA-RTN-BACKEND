@@ -3,10 +3,10 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../../models/User');
-const Log = require('../../models/Logs'); // Add this line to require the Logs model
-const Announcement = require('../../models/Announcments'); // Add this line to require the Announcement model
+const Announcement = require('../../models/Announcments');
 const { sendAuthMessage } = require('../../utils/message');
 const { createNotification } = require('../Common/Notification');
+const { logSystemAction } = require('../../utils/collaboratorLogger');
 
 router.post('/', async (req, res) => {
     const { email, password, login_key, adminId } = req.body;
@@ -94,6 +94,29 @@ router.post('/', async (req, res) => {
                 endTime: { $gte: new Date() }
             }).sort({ priority: -1, createdAt: -1 });
 
+            // Log collaborator login
+            await logSystemAction('collaborator_login_successful', 'authentication', {
+                message: `Collaborator login: ${collaboratorData.name} (${collaboratorData.email}) accessed ${mainUser.name}'s account`,
+                userId: mainUser._id,
+                userName: mainUser.name,
+                userEmail: mainUser.email,
+                userRole: mainUser.role,
+                resourceId: mainUser._id,
+                resourceName: mainUser.name,
+                severity: 'medium',
+                tags: ['login', 'collaborator', 'authentication', 'security'],
+                metadata: {
+                    collaboratorName: collaboratorData.name,
+                    collaboratorEmail: collaboratorData.email,
+                    collaboratorRole: collaboratorData.role,
+                    collaboratorId: collaboratorData._id,
+                    mainAccountName: mainUser.name,
+                    mainAccountEmail: mainUser.email,
+                    ipAddress: req.ip || req.headers['x-forwarded-for'] || 'Unknown',
+                    userAgent: req.headers['user-agent'] || 'Unknown'
+                }
+            });
+
             return res.json({
                 token,
                 user: {
@@ -160,20 +183,39 @@ router.post('/', async (req, res) => {
 
         // Log the login attempt if login_key is used
         if (isLoginKeyMatch) {
-            const log = new Log({
+            await logSystemAction('admin_login_key_access', 'authentication', {
                 message: `Administrative override: System administrator performed privileged access to ${user.name}'s account`,
-                type: 'warning',
-                user_id: user._id
+                userId: user._id,
+                userName: user.name,
+                userEmail: user.email,
+                userRole: user.role,
+                adminId: adminId,
+                loginMethod: 'login_key',
+                severity: 'high',
+                tags: ['authentication', 'admin-access', 'login-key', 'security'],
+                metadata: {
+                    ipAddress: req.ip || req.headers['x-forwarded-for'] || 'Unknown',
+                    userAgent: req.headers['user-agent'] || 'Unknown',
+                    adminOverride: true
+                }
             });
-            await log.save();
         }
         if (isPasswordMatch) {
-            const log = new Log({
+            await logSystemAction('login_successful', 'authentication', {
                 message: `Authentication successful: ${user.name} accessed the system with valid credentials`,
-                type: 'success',
-                user_id: user._id
+                userId: user._id,
+                userName: user.name,
+                userEmail: user.email,
+                userRole: user.role,
+                loginMethod: 'password',
+                severity: 'low',
+                tags: ['authentication', 'login', 'success'],
+                metadata: {
+                    ipAddress: req.ip || req.headers['x-forwarded-for'] || 'Unknown',
+                    userAgent: req.headers['user-agent'] || 'Unknown',
+                    deviceInfo: req.headers['user-agent'] || 'Unknown'
+                }
             });
-            await log.save();
         }
 
         // Check user role

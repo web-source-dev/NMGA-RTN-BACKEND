@@ -10,7 +10,7 @@ const {
     isFeatureEnabled
 } = require('../../config/features');
 const { isAdmin, getCurrentUserContext } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Get features that should be shown on the management page
 router.get('/', isAdmin, async (req, res) => {
@@ -25,6 +25,7 @@ router.get('/', isAdmin, async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching features:', error);
+        await logError(req, 'view_feature_management', 'feature management', error);
         res.status(500).json({
             success: false,
             message: 'Error fetching features'
@@ -45,6 +46,7 @@ router.get('/all', isAdmin, async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching all features:', error);
+        await logError(req, 'view_all_features', 'feature management', error);
         res.status(500).json({
             success: false,
             message: 'Error fetching all features'
@@ -80,6 +82,9 @@ router.post('/enable/:featureName', isAdmin, async (req, res) => {
         }
     } catch (error) {
         console.error('Error enabling feature:', error);
+        await logError(req, 'enable_feature', 'feature management', error, {
+            featureName: req.params.featureName
+        });
         res.status(500).json({
             success: false,
             message: 'Error enabling feature'
@@ -115,6 +120,9 @@ router.post('/disable/:featureName', isAdmin, async (req, res) => {
         }
     } catch (error) {
         console.error('Error disabling feature:', error);
+        await logError(req, 'disable_feature', 'feature management', error, {
+            featureName: req.params.featureName
+        });
         res.status(500).json({
             success: false,
             message: 'Error disabling feature'
@@ -141,6 +149,7 @@ router.post('/enable-all', isAdmin, async (req, res) => {
         });
     } catch (error) {
         console.error('Error enabling all features:', error);
+        await logError(req, 'enable_all_features', 'feature management', error);
         res.status(500).json({
             success: false,
             message: 'Error enabling all features'
@@ -167,6 +176,7 @@ router.post('/disable-all', isAdmin, async (req, res) => {
         });
     } catch (error) {
         console.error('Error disabling all features:', error);
+        await logError(req, 'disable_all_features', 'feature management', error);
         res.status(500).json({
             success: false,
             message: 'Error disabling all features'
@@ -180,6 +190,12 @@ router.get('/status/:featureName', isAdmin, async (req, res) => {
         const { featureName } = req.params;
         const enabled = await isFeatureEnabled(featureName);
         
+        // Log the action
+        await logCollaboratorAction(req, 'check_feature_status', 'feature management', {
+            featureName,
+            enabled
+        });
+        
         res.json({
             success: true,
             featureName,
@@ -187,6 +203,9 @@ router.get('/status/:featureName', isAdmin, async (req, res) => {
         });
     } catch (error) {
         console.error('Error checking feature status:', error);
+        await logError(req, 'check_feature_status', 'feature management', error, {
+            featureName: req.params.featureName
+        });
         res.status(500).json({
             success: false,
             message: 'Error checking feature status'

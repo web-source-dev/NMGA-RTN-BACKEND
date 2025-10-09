@@ -2,10 +2,9 @@ const express = require('express');
 const router = express.Router();
 const User = require('../../models/User');
 const bcrypt = require('bcryptjs');
-const Log = require('../../models/Logs');
 const sendEmail = require('../../utils/email');
 const passwordChangedEmail = require('../../utils/EmailTemplates/passwordChangedEmail');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logSystemAction } = require('../../utils/collaboratorLogger');
 
 router.post('/:token', async (req, res) => {
   const { token } = req.params;
@@ -33,10 +32,21 @@ router.post('/:token', async (req, res) => {
     setImmediate(async () => {
       try {
         // Log the action
-        await logCollaboratorAction(req, 'change_password', 'password reset', {
-          targetUserName: user.name,
-          targetUserEmail: user.email,
-          additionalInfo: 'Password reset completed successfully'
+        await logSystemAction('password_reset_successful', 'authentication', {
+          message: `Password reset successful: ${user.name} (${user.email})`,
+          userId: user._id,
+          userName: user.name,
+          userEmail: user.email,
+          userRole: user.role,
+          resourceId: user._id,
+          resourceName: user.name,
+          severity: 'medium',
+          tags: ['password-reset', 'authentication', 'security'],
+          metadata: {
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || 'Unknown',
+            userAgent: req.headers['user-agent'] || 'Unknown',
+            resetMethod: 'token'
+          }
         });
 
         const emailContent = passwordChangedEmail(user.name);

@@ -6,9 +6,8 @@ const Deal = require('../../models/Deals');
 const Commitment = require('../../models/Commitments');
 const Favorite = require('../../models/Favorite');
 const bcrypt = require('bcryptjs');
-const Log = require('../../models/Logs');
 const { isMemberAdmin, getCurrentUserContext,isAuthenticated } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Get member stats
 router.get('/stats', isMemberAdmin, async (req, res) => {
@@ -95,9 +94,7 @@ router.get('/stats', isMemberAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching member stats:', error);
-    await logCollaboratorAction(req, 'view_member_stats_failed', 'member', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'view_member_stats', 'member', error);
     res.status(500).json({ message: 'Error fetching member stats' });
   }
 });
@@ -122,9 +119,7 @@ router.get('/commitments', isMemberAdmin, async (req, res) => {
     res.json(commitments);
   } catch (error) {
     console.error('Error fetching commitments:', error);
-    await logCollaboratorAction(req, 'view_member_commitments_failed', 'commitments', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'view_member_commitments', 'commitments', error);
     res.status(500).json({ message: 'Error fetching commitments' });
   }
 });
@@ -153,9 +148,7 @@ router.get('/favorites', isMemberAdmin, async (req, res) => {
     res.json(favorites);
   } catch (error) {
     console.error('Error fetching favorites:', error);
-    await logCollaboratorAction(req, 'view_member_favorites_failed', 'favorites', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'view_member_favorites', 'favorites', error);
     res.status(500).json({ message: 'Error fetching favorites' });
   }
 });
@@ -180,9 +173,8 @@ router.delete('/favorites/:dealId', isMemberAdmin, async (req, res) => {
     res.json({ message: 'Favorite removed successfully' });
   } catch (error) {
     console.error('Error removing favorite:', error);
-    await logCollaboratorAction(req, 'remove_favorite_failed', 'favorite', { 
-      dealId: req.params.dealId,
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'remove_favorite', 'favorite', error, {
+      dealId: req.params.dealId
     });
     res.status(500).json({ message: 'Error removing favorite' });
   }
@@ -216,9 +208,8 @@ router.post('/commitments/:commitmentId/cancel', isMemberAdmin, async (req, res)
     res.json({ message: 'Commitment cancelled successfully' });
   } catch (error) {
     console.error('Error cancelling commitment:', error);
-    await logCollaboratorAction(req, 'cancel_commitment_failed', 'commitment', { 
-      commitmentId: req.params.commitmentId,
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'cancel_commitment', 'commitment', error, {
+      commitmentId: req.params.commitmentId
     });
     res.status(500).json({ message: 'Error cancelling commitment' });
   }
@@ -326,9 +317,7 @@ router.get('/analytics', isMemberAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching analytics:', error);
-    await logCollaboratorAction(req, 'view_member_analytics_failed', 'analytics', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'view_member_analytics', 'analytics', error);
     res.status(500).json({ message: 'Error fetching analytics' });
   }
 });
@@ -355,9 +344,7 @@ router.get('/user', isAuthenticated, async (req, res) => {
     res.json(user);
   } catch (error) {
     console.error('Error fetching user data:', error);
-    await logCollaboratorAction(req, 'view_user_profile_failed', 'profile', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'view_user_profile', 'profile', error);
     res.status(500).json({ message: 'Error fetching user data' });
   }
 });
@@ -391,9 +378,7 @@ router.put('/user', isAuthenticated, async (req, res) => {
     res.json({ message: 'User updated successfully', user: updatedUser });
   } catch (error) {
     console.error('Error updating user data:', error);
-    await logCollaboratorAction(req, 'update_user_profile_failed', 'profile', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'update_user_profile', 'profile', error);
     res.status(500).json({ message: 'Error updating user data' });
   }
 });
@@ -436,9 +421,7 @@ router.post('/user/password', isAuthenticated, async (req, res) => {
     res.json({ message: 'Password updated successfully' });
   } catch (error) {
     console.error('Error updating password:', error);
-    await logCollaboratorAction(req, 'change_password_failed', 'password', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'change_password', 'password', error);
     res.status(500).json({ message: 'Error updating password' });
   }
 });
@@ -471,9 +454,7 @@ router.post('/user/avatar', isAuthenticated, async (req, res) => {
       res.json({ message: 'Avatar updated successfully', user: updatedUser });
   } catch (error) {
       console.error('Error updating avatar:', error);
-      await logCollaboratorAction(req, 'update_user_avatar_failed', 'avatar', { 
-        additionalInfo: `Error: ${error.message}`
-      });
+      await logError(req, 'update_user_avatar', 'avatar', error);
       res.status(500).json({ message: 'Error updating avatar' });
   }
 });
@@ -971,8 +952,10 @@ router.get('/detailed-analytics', isMemberAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching detailed analytics:', error);
-    await logCollaboratorAction(req, 'view_detailed_analytics_failed', 'analytics', { 
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'view_detailed_analytics', 'analytics', error, {
+      timeRange: req.query.timeRange,
+      startDate: req.query.startDate,
+      endDate: req.query.endDate
     });
     res.status(500).json({ message: 'Error fetching detailed analytics' });
   }
@@ -1091,16 +1074,11 @@ router.put('/commitments/:commitmentId/modify-sizes', isMemberAdmin, async (req,
       commitment.status = 'cancelled';
       await commitment.save();
       
-      await Log.create({
-        message: `Member ${currentUser.name} (${currentUser.email}) cancelled commitment ${commitment._id} by setting all sizes to 0`,
-        type: 'info',
-        user_id: userId
-      });
-      
       await logCollaboratorAction(req, 'cancel_commitment_via_modification', 'commitment', { 
         commitmentId: commitment._id,
         dealName: commitment.dealId.name,
-        additionalInfo: `Cancelled commitment by setting all sizes to 0`
+        resourceId: commitment._id,
+        dealId: commitment.dealId._id
       });
       
       return res.json({
@@ -1188,9 +1166,8 @@ router.put('/commitments/:commitmentId/modify-sizes', isMemberAdmin, async (req,
     });
   } catch (error) {
     console.error('Error modifying commitment:', error);
-    await logCollaboratorAction(req, 'modify_commitment_sizes_failed', 'commitment', { 
-      commitmentId: req.params.commitmentId,
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'modify_commitment_sizes', 'commitment', error, {
+      commitmentId: req.params.commitmentId
     });
     res.status(500).json({ message: 'Error modifying commitment' });
   }
@@ -1251,9 +1228,7 @@ router.get('/dashboard-access', isMemberAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching member dashboard access:', error);
-    await logCollaboratorAction(req, 'access_member_dashboard_failed', 'dashboard', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'access_member_dashboard', 'dashboard', error);
     res.status(500).json({ message: 'Error fetching member dashboard access' });
   }
 });

@@ -3,7 +3,7 @@ const router = express.Router();
 const User = require('../../models/User');
 const bcrypt = require('bcryptjs');
 const { isAdmin } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 router.post('/', isAdmin, async (req, res) => {
   try {
@@ -76,9 +76,10 @@ router.post('/', isAdmin, async (req, res) => {
     console.error('Error resetting password:', error);
     
     // Log the error
-    await logCollaboratorAction(req, 'admin_reset_password_failed', 'password management', {
+    await logError(req, 'admin_reset_password', 'password', error, {
       targetUserId: req.body.userId,
-      additionalInfo: `Error: ${error.message}`
+      severity: 'high',
+      tags: ['password-reset', 'admin', 'security']
     });
 
     res.status(500).json({

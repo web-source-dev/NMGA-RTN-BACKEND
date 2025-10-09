@@ -1,14 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../../models/User');
-const Log = require('../../models/Logs');
 const sendEmail = require('../../utils/email');
 const InvitationEmail = require('../../utils/EmailTemplates/InvitationEmail');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { importUsers } = require('../../scripts/importUsers');
 const { generateUniqueLoginKey } = require('../../utils/loginKeyGenerator');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Get all users
 router.get('/', async (req, res) => {
@@ -30,7 +29,10 @@ router.post('/import-users', async (req, res) => {
         }
         
         // Log the action
-        await logCollaboratorAction(req, 'import_data', 'user data import');
+        await logCollaboratorAction(req, 'import_users', 'user', {
+            severity: 'high',
+            tags: ['import', 'bulk-operation', 'user-management']
+        });
         
         // Call the import function
         const result = await importUsers();
@@ -104,11 +106,12 @@ router.post('/add-user', async (req, res) => {
         console.error('Error adding user:', error);
         
         // Log the error
-        await logCollaboratorAction(req, 'create_user_failed', 'user account', {
+        await logError(req, 'create_user', 'user', error, {
             targetUserName: name,
             targetUserEmail: email,
             targetUserRole: role,
-            additionalInfo: `Error: ${error.message}`
+            severity: 'high',
+            tags: ['user-creation', 'failed']
         });
         
         res.status(500).json({ message: 'Error adding user' });
@@ -140,9 +143,18 @@ router.post('/create-password', async (req, res) => {
     } catch (error) {
         console.error('Error creating password:', error);
         
-        // Log the error
-        await logCollaboratorAction(req, 'setup_password_failed', 'user account', {
-            additionalInfo: `Error: ${error.message}`
+        // Log the error using system action since no authenticated user in req
+        await logSystemAction('setup_password_failed', 'authentication', {
+            message: `Failed to create password for user account`,
+            error: {
+                message: error.message,
+                stack: error.stack
+            },
+            severity: 'high',
+            tags: ['password-setup', 'authentication', 'failed'],
+            metadata: {
+                token: token ? 'provided' : 'missing'
+            }
         });
         
         res.status(500).json({ message: 'Error creating password' });

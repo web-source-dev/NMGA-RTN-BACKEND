@@ -3,7 +3,7 @@ const router = express.Router();
 const Deal = require('../../models/Deals');
 const Payment = require('../../models/Paymentmodel');
 const { isAdmin } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 // Get deal analytics overview
 router.get('/overview', isAdmin, async (req, res) => {
     try {
@@ -77,6 +77,7 @@ router.get('/overview', isAdmin, async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching deal analytics:', error);
+        await logError(req, 'view_deal_analytics', 'deal analytics overview', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -112,6 +113,7 @@ router.get('/categories', isAdmin, async (req, res) => {
         res.json(categories);
     } catch (error) {
         console.error('Error fetching category stats:', error);
+        await logError(req, 'view_deal_categories', 'deal categories statistics', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -134,6 +136,9 @@ router.get('/recent', isAdmin, async (req, res) => {
         res.json(recentDeals);
     } catch (error) {
         console.error('Error fetching recent deals:', error);
+        await logError(req, 'view_recent_deals', 'recent deals analytics', error, {
+            limit: Math.min(parseInt(req.query.limit) || 5, 20)
+        });
         res.status(500).json({ error: error.message });
     }
 });

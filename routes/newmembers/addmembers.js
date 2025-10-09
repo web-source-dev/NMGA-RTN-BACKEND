@@ -3,14 +3,13 @@ const router = express.Router();
 const User = require('../../models/User');
 const Commitment = require('../../models/Commitments');
 const Deal = require('../../models/Deals');
-const Log = require('../../models/Logs');
 const crypto = require('crypto');
 const sendEmail = require('../../utils/email');
 const invitationEmail = require('../../utils/EmailTemplates/InvitationEmail');
 const jwt = require('jsonwebtoken');
 const { isMemberAdmin, getCurrentUserContext } = require('../../middleware/auth');
 const { generateUniqueLoginKey } = require('../../utils/loginKeyGenerator');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 // Route to add a new member - accessible by member or admin impersonating member
 router.post('/add', isMemberAdmin, async (req, res) => {
@@ -109,8 +108,9 @@ router.post('/add', isMemberAdmin, async (req, res) => {
     console.error('Error adding member:', error);
     
     // Log the error
-    await logCollaboratorAction(req, 'add_new_member_failed', 'member', { 
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'add_new_member', 'member', error, {
+      memberEmail: req.body.email,
+      memberName: req.body.name
     });
     
     res.status(500).json({ 
@@ -147,9 +147,7 @@ router.get('/members', isMemberAdmin, async (req, res) => {
     
   } catch (error) {
     console.error('Error fetching added members:', error);
-    await logCollaboratorAction(req, 'view_added_members_failed', 'members', { 
-      additionalInfo: `Error: ${error.message}`
-    });
+    await logError(req, 'view_added_members', 'members', error);
     res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch members', 
@@ -249,9 +247,8 @@ router.get('/member-details/:memberId', isMemberAdmin, async (req, res) => {
     
   } catch (error) {
     console.error('Error fetching member details:', error);
-    await logCollaboratorAction(req, 'view_member_details_failed', 'member', { 
-      memberId: req.params.memberId,
-      additionalInfo: `Error: ${error.message}`
+    await logError(req, 'view_member_details', 'member', error, {
+      memberId: req.params.memberId
     });
     res.status(500).json({ 
       success: false, 

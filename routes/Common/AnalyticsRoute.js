@@ -4,7 +4,7 @@ const User = require('../../models/User');
 const Deal = require('../../models/Deals');
 const Payment = require('../../models/Paymentmodel');
 const { isAdmin } = require('../../middleware/auth');
-const { logCollaboratorAction } = require('../../utils/collaboratorLogger');
+const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
 
 // Get analytics overview
@@ -60,6 +60,7 @@ router.get('/overview', isAdmin, async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching analytics overview:', error);
+        await logError(req, 'view_analytics', 'analytics dashboard', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -131,6 +132,7 @@ router.get('/weekly-metrics', isAdmin, async (req, res) => {
         res.json(formattedWeeklyData);
     } catch (error) {
         console.error('Error fetching weekly metrics:', error);
+        await logError(req, 'view_weekly_metrics', 'weekly metrics', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -180,6 +182,7 @@ router.get('/regions', isAdmin, async (req, res) => {
         res.json(regions);
     } catch (error) {
         console.error('Error fetching regional statistics:', error);
+        await logError(req, 'view_regional_stats', 'regional statistics', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
@@ -226,6 +229,7 @@ router.get('/business-types', isAdmin, async (req, res) => {
         res.json(businessTypes);
     } catch (error) {
         console.error('Error fetching business type statistics:', error);
+        await logError(req, 'view_business_types', 'business type analytics', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
