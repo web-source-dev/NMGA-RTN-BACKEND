@@ -502,7 +502,12 @@ const createLogMessage = async (action, resource, context = {}, tokenInfo) => {
         'update_payment_status': `${actorName} updated the payment processing status to "${context.paymentStatus || 'unknown'}", reflecting the current financial transaction state`,
         'generate_invoice': `${actorName} created and generated a formal invoice document for an order, producing a professional billing statement for record-keeping and customer delivery`,
         'view_filtered_orders': `${actorName} applied ${context.filters || 0} custom filters to view a refined subset of orders matching specific criteria such as date range, status, or customer`,
-        'download_orders': `${actorName} exported and downloaded ${context.totalOrders || 0} orders in ${context.format || 'unknown'} format for offline analysis, record-keeping, or reporting purposes`
+        'download_orders': `${actorName} exported and downloaded ${context.totalOrders || 0} orders in ${context.format || 'unknown'} format for offline analysis, record-keeping, or reporting purposes`,
+        
+        // Daily commitment summary operations
+        'daily_commitment_summaries_disabled': `System: Daily commitment summaries feature is currently disabled in the platform configuration`,
+        'daily_commitment_summaries_completed': `System successfully sent ${context.summariesSent || 0} daily commitment summary emails to users and distributors, providing comprehensive updates on daily commitment activities and transactions`,
+        'daily_commitment_summaries_failed': `System encountered a critical error while attempting to send daily commitment summaries, preventing automated reporting from completing successfully`
     };
     
     // Get the base message

@@ -52,28 +52,6 @@ const checkCommitmentWindowOpeningReminders = async () => {
     // Send reminders to all members
     for (const member of members) {
       try {
-        // Check if member has already been notified about this month's commitment window
-        const reminderKey = `1_day_before_opening_${currentMonth.month}_${currentMonth.year}`;
-        
-        // Check if this member has already been notified (multiple patterns for robustness)
-        const existingReminder = await Log.findOne({
-          $and: [
-            { user_id: member._id },
-            {
-              $or: [
-                { message: { $regex: new RegExp(`Commitment window opening reminder.*${member.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*${currentMonth.month} ${currentMonth.year}`) } },
-                { message: { $regex: new RegExp(`opening reminder.*${member.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*${currentMonth.month} ${currentMonth.year}`) } },
-                { message: { $regex: new RegExp(`commitment window.*${member.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*${currentMonth.month} ${currentMonth.year}`) } }
-              ]
-            }
-          ]
-        });
-
-        if (existingReminder) {
-          console.log(`⏭️ Skipping opening reminder for ${member.name} - already notified`);
-          continue;
-        }
-
         // Send email reminder
         await sendEmail(
           member.email,
@@ -194,28 +172,6 @@ const checkCommitmentWindowClosingReminders = async () => {
     // Send reminders to all members
     for (const member of members) {
       try {
-        // Check if member has already been notified about this month's closing reminder
-        const reminderKey = `${reminderType}_${currentMonth.month}_${currentMonth.year}`;
-        
-        // Check if this member has already been notified (multiple patterns for robustness)
-        const existingReminder = await Log.findOne({
-          $and: [
-            { user_id: member._id },
-            {
-              $or: [
-                { message: { $regex: new RegExp(`${timeRemaining} commitment window closing reminder.*${member.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*${currentMonth.month} ${currentMonth.year}`) } },
-                { message: { $regex: new RegExp(`${timeRemaining} closing reminder.*${member.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*${currentMonth.month} ${currentMonth.year}`) } },
-                { message: { $regex: new RegExp(`closing reminder.*${member.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*${currentMonth.month} ${currentMonth.year}`) } }
-              ]
-            }
-          ]
-        });
-
-        if (existingReminder) {
-          console.log(`⏭️ Skipping ${timeRemaining} closing reminder for ${member.name} - already notified`);
-          continue;
-        }
-
         // Check if member has any commitments for this month's deals
         const memberCommitments = await Commitment.find({
           userId: member._id,

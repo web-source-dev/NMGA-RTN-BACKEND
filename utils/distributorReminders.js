@@ -54,28 +54,6 @@ const checkPostingDeadlineReminders = async () => {
     // Send reminders to all distributors
     for (const distributor of distributors) {
       try {
-        // Check if distributor has already been notified about this month's deadline
-        const reminderKey = `${reminderType}_${nextMonth.month}_${nextMonth.year}`;
-        
-        // Check if this distributor has already been notified (multiple patterns for robustness)
-        const existingReminder = await Log.findOne({
-          $and: [
-            { user_id: distributor._id },
-            {
-              $or: [
-                { message: { $regex: new RegExp(`${daysUntilDeadline}-day posting reminder.*${distributor.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*${deliveryMonth.month} ${deliveryMonth.year}`) } },
-                { message: { $regex: new RegExp(`${daysUntilDeadline}-day posting reminder.*${distributor.businessName?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*${deliveryMonth.month} ${deliveryMonth.year}`) } },
-                { message: { $regex: new RegExp(`posting reminder.*${distributor.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*${deliveryMonth.month} ${deliveryMonth.year}`) } }
-              ]
-            }
-          ]
-        });
-
-        if (existingReminder) {
-          console.log(`⏭️ Skipping posting reminder for ${distributor.name} - already notified`);
-          continue;
-        }
-
         const distributorName = distributor.businessName || distributor.name;
         
         // Send email reminder

@@ -3,12 +3,18 @@ const User = require('../models/User');
 const sendEmail = require('./email');
 const DailyCommitmentSummaryTemplate = require('./EmailTemplates/DailyCommitmentSummaryTemplate');
 const { isFeatureEnabled } = require('../config/features');
+const { logSystemAction } = require('./collaboratorLogger');
 
 const sendDailyCommitmentSummaries = async () => {
     try {
         // Check if daily summaries feature is enabled
         if (!(await isFeatureEnabled('DAILY_SUMMARIES'))) {
             console.log('📊 Daily commitment summaries feature is disabled');
+            await logSystemAction('daily_commitment_summaries_disabled', 'system', {
+                message: 'Daily commitment summaries feature is disabled',
+                severity: 'low',
+                tags: ['daily-summary', 'feature-disabled']
+            });
             return;
         }
 
@@ -114,8 +120,25 @@ const sendDailyCommitmentSummaries = async () => {
         }
 
         console.log(`Successfully sent ${summaries.length} daily commitment summaries`);
+        
+        await logSystemAction('daily_commitment_summaries_completed', 'email', {
+            message: `Successfully sent ${summaries.length} daily commitment summaries`,
+            summariesSent: summaries.length,
+            severity: 'low',
+            tags: ['daily-summary', 'email', 'automated', 'completed']
+        });
     } catch (error) {
         console.error('Error sending daily commitment summaries:', error);
+        
+        await logSystemAction('daily_commitment_summaries_failed', 'system', {
+            message: `Error sending daily commitment summaries: ${error.message}`,
+            error: {
+                message: error.message,
+                stack: error.stack
+            },
+            severity: 'critical',
+            tags: ['daily-summary', 'system-error', 'failed']
+        });
     }
 };
 
