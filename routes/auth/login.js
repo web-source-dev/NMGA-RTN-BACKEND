@@ -20,16 +20,6 @@ router.post('/', async (req, res) => {
         if (user.isBlocked) {
             return res.status(403).json({ message: 'User is blocked' });
         }
-        // Check if email is verified (skip for admin login with login_key)
-        if (!user.isVerified && !login_key) {
-            return res.status(403).json({ 
-                message: 'Email not verified. Please verify your email before logging in.',
-                needsVerification: true,
-                userId: user._id,
-                email: user.email
-            });
-        }
-
         let isPasswordMatch = false;
         if (password) {
             isPasswordMatch = await bcrypt.compare(password, user.password);
