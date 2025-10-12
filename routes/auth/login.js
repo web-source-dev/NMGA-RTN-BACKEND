@@ -9,7 +9,7 @@ const { createNotification } = require('../Common/Notification');
 const { logSystemAction } = require('../../utils/collaboratorLogger');
 
 router.post('/', async (req, res) => {
-    const { email, password, login_key, adminId } = req.body;
+    const { email, password, login_key, adminId, parentUserId } = req.body;
 
     try {
         // First check if it's a main user
@@ -144,15 +144,6 @@ router.post('/', async (req, res) => {
         if (user.isBlocked) {
             return res.status(403).json({ message: 'User is blocked' });
         }
-        // Check if email is verified (skip for admin login with login_key)
-        if (!user.isVerified && !login_key) {
-            return res.status(403).json({ 
-                message: 'Email not verified. Please verify your email before logging in.',
-                needsVerification: true,
-                userId: user._id,
-                email: user.email
-            });
-        }
 
         let isPasswordMatch = false;
         if (password) {
@@ -183,22 +174,48 @@ router.post('/', async (req, res) => {
 
         // Log the login attempt if login_key is used
         if (isLoginKeyMatch) {
-            await logSystemAction('admin_login_key_access', 'authentication', {
-                message: `Administrative override: System administrator performed privileged access to ${user.name}'s account`,
-                userId: user._id,
-                userName: user.name,
-                userEmail: user.email,
-                userRole: user.role,
-                adminId: adminId,
-                loginMethod: 'login_key',
-                severity: 'high',
-                tags: ['authentication', 'admin-access', 'login-key', 'security'],
-                metadata: {
-                    ipAddress: req.ip || req.headers['x-forwarded-for'] || 'Unknown',
-                    userAgent: req.headers['user-agent'] || 'Unknown',
-                    adminOverride: true
-                }
-            });
+            if (adminId) {
+                // Admin impersonation
+                await logSystemAction('admin_login_key_access', 'authentication', {
+                    message: `Administrative override: System administrator performed privileged access to ${user.name}'s account`,
+                    userId: user._id,
+                    userName: user.name,
+                    userEmail: user.email,
+                    userRole: user.role,
+                    adminId: adminId,
+                    loginMethod: 'login_key',
+                    severity: 'high',
+                    tags: ['authentication', 'admin-access', 'login-key', 'security'],
+                    metadata: {
+                        ipAddress: req.ip || req.headers['x-forwarded-for'] || 'Unknown',
+                        userAgent: req.headers['user-agent'] || 'Unknown',
+                        adminOverride: true,
+                        impersonationType: 'admin'
+                    }
+                });
+            } else if (parentUserId) {
+                // Parent member impersonation
+                const parentUser = await User.findById(parentUserId);
+                await logSystemAction('member_login_key_access', 'authentication', {
+                    message: `Parent store access: ${parentUser?.name || 'Parent Store'} accessed their sub-store ${user.name}'s account`,
+                    userId: user._id,
+                    userName: user.name,
+                    userEmail: user.email,
+                    userRole: user.role,
+                    parentUserId: parentUserId,
+                    parentUserName: parentUser?.name,
+                    parentUserEmail: parentUser?.email,
+                    loginMethod: 'login_key',
+                    severity: 'medium',
+                    tags: ['authentication', 'member-access', 'login-key', 'substore-access'],
+                    metadata: {
+                        ipAddress: req.ip || req.headers['x-forwarded-for'] || 'Unknown',
+                        userAgent: req.headers['user-agent'] || 'Unknown',
+                        parentOverride: true,
+                        impersonationType: 'member'
+                    }
+                });
+            }
         }
         if (isPasswordMatch) {
             await logSystemAction('login_successful', 'authentication', {
@@ -237,8 +254,30 @@ router.post('/', async (req, res) => {
             role: user.role, // The user's role
             impersonatedUserId: user._id, // The user being impersonated
             isImpersonating: true,
-            adminId: adminId // The admin's ID who is doing the impersonation
+            adminId: adminId, // The admin's ID who is doing the impersonation
+            impersonationType: 'admin' // Type of impersonation
           };
+        }
+        
+        // If parent member is logging in as their added member using login_key, include impersonation info
+        if (isLoginKeyMatch && parentUserId && !adminId) {
+          // Verify that the parentUserId actually added this user
+          if (user.addedBy && user.addedBy.toString() === parentUserId) {
+            // This is a parent member logging in as their added member
+            tokenPayload = {
+              id: user._id, // The user being impersonated
+              role: user.role, // The user's role
+              impersonatedUserId: user._id, // The user being impersonated
+              isImpersonating: true,
+              parentUserId: parentUserId, // The parent user's ID who is doing the impersonation
+              impersonationType: 'member' // Type of impersonation
+            };
+          } else {
+            return res.status(403).json({ 
+              message: 'You do not have permission to access this account',
+              success: false 
+            });
+          }
         }
 
         const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: '1y' });
