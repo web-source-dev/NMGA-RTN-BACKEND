@@ -34,6 +34,8 @@ const extractTokenInfo = (req) => {
             isImpersonating: decoded.isImpersonating || false,
             impersonatedUserId: decoded.impersonatedUserId || null,
             adminId: decoded.adminId || null,
+            parentUserId: decoded.parentUserId || null,
+            impersonationType: decoded.impersonationType || null,
             
             // Raw decoded token for debugging
             raw: decoded
@@ -114,18 +116,31 @@ const getRoleDisplayName = (role) => {
  * @returns {String} - User-friendly log message
  */
 const createLogMessage = async (action, resource, context = {}, tokenInfo) => {
-    const { isCollaborator, isImpersonating, userId, collaboratorId, collaboratorRole, adminId } = tokenInfo;
+    const { isCollaborator, isImpersonating, userId, collaboratorId, collaboratorRole, adminId, parentUserId } = tokenInfo;
     
     let message = '';
     let actorName = '';
     let actorRole = '';
     
     if (isImpersonating) {
-        // Admin impersonating another user
-        const adminName = await getUserName(adminId);
-        const impersonatedUserName = await getUserName(userId);
-        actorName = `${adminName} (impersonating ${impersonatedUserName})`;
-        actorRole = 'Administrator';
+        if (adminId) {
+            // Admin impersonating another user
+            const adminName = await getUserName(adminId);
+            const impersonatedUserName = await getUserName(userId);
+            actorName = `${adminName} (impersonating ${impersonatedUserName})`;
+            actorRole = 'Administrator';
+        } else if (parentUserId) {
+            // Parent member impersonating their sub-store
+            const parentName = await getUserName(parentUserId);
+            const impersonatedUserName = await getUserName(userId);
+            actorName = `${parentName} (accessing sub-store ${impersonatedUserName})`;
+            actorRole = 'Parent Store';
+        } else {
+            // Fallback for unknown impersonation type
+            const impersonatedUserName = await getUserName(userId);
+            actorName = `Unknown User (impersonating ${impersonatedUserName})`;
+            actorRole = 'Unknown';
+        }
     } else if (isCollaborator) {
         // Collaborator performing action
         const collaboratorName = await getCollaboratorName(userId, collaboratorId);
@@ -190,6 +205,7 @@ const createLogMessage = async (action, resource, context = {}, tokenInfo) => {
         'unblock_user': `${actorName} unblocked user account "${context.targetUserName || 'Unknown'}", restoring their access and permissions to use the platform`,
         'impersonate_user': `${actorName} initiated administrative impersonation mode to access the account and view the platform as user "${context.targetUserName || 'Unknown'}" for support or troubleshooting purposes`,
         'stop_impersonation': `${actorName} ended the administrative impersonation session and returned to their own account context`,
+        'member_login_key_access': `Parent store ${context.parentUserName || 'Unknown'} accessed their sub-store ${context.userName || 'Unknown'}'s account to manage operations and view data`,
         
         // User management actions
         'view_all_users': `${actorName} accessed the comprehensive user management interface to review the complete list of all registered platform users, their roles, and account status`,
@@ -660,7 +676,11 @@ const generateTags = (action, resource, context, tokenInfo) => {
     if (resource) tags.push(resource);
     
     // Add user role tags
-    if (tokenInfo.isImpersonating) tags.push('impersonation');
+    if (tokenInfo.isImpersonating) {
+        tags.push('impersonation');
+        if (tokenInfo.adminId) tags.push('admin-impersonation');
+        if (tokenInfo.parentUserId) tags.push('parent-impersonation');
+    }
     if (tokenInfo.isCollaborator) tags.push('collaborator');
     if (tokenInfo.userRole === 'admin') tags.push('admin-action');
     
@@ -730,15 +750,41 @@ const logCollaboratorAction = async (req, action, resource = '', context = {}) =
         // Build impersonation information if applicable
         let impersonationInfo = null;
         if (tokenInfo.isImpersonating) {
-            const adminUser = await User.findById(tokenInfo.adminId).select('name');
-            const impersonatedUser = await User.findById(tokenInfo.impersonatedUserId).select('name');
+            const impersonatedUser = await User.findById(tokenInfo.impersonatedUserId).select('name email');
             
-            impersonationInfo = {
-                adminId: tokenInfo.adminId,
-                adminName: adminUser ? adminUser.name : 'Unknown Admin',
-                impersonatedUserId: tokenInfo.impersonatedUserId,
-                impersonatedUserName: impersonatedUser ? impersonatedUser.name : 'Unknown User'
-            };
+            if (tokenInfo.adminId) {
+                // Admin impersonation
+                const adminUser = await User.findById(tokenInfo.adminId).select('name email');
+                impersonationInfo = {
+                    type: 'admin',
+                    adminId: tokenInfo.adminId,
+                    adminName: adminUser ? adminUser.name : 'Unknown Admin',
+                    adminEmail: adminUser ? adminUser.email : 'Unknown Email',
+                    impersonatedUserId: tokenInfo.impersonatedUserId,
+                    impersonatedUserName: impersonatedUser ? impersonatedUser.name : 'Unknown User',
+                    impersonatedUserEmail: impersonatedUser ? impersonatedUser.email : 'Unknown Email'
+                };
+            } else if (tokenInfo.parentUserId) {
+                // Parent member impersonation
+                const parentUser = await User.findById(tokenInfo.parentUserId).select('name email businessName');
+                impersonationInfo = {
+                    type: 'member',
+                    parentUserId: tokenInfo.parentUserId,
+                    parentName: parentUser ? parentUser.name : 'Unknown Parent',
+                    parentEmail: parentUser ? parentUser.email : 'Unknown Email',
+                    parentBusinessName: parentUser ? parentUser.businessName : 'Unknown Business',
+                    impersonatedUserId: tokenInfo.impersonatedUserId,
+                    impersonatedUserName: impersonatedUser ? impersonatedUser.name : 'Unknown User',
+                    impersonatedUserEmail: impersonatedUser ? impersonatedUser.email : 'Unknown Email'
+                };
+            } else {
+                // Unknown impersonation type
+                impersonationInfo = {
+                    type: 'unknown',
+                    impersonatedUserId: tokenInfo.impersonatedUserId,
+                    impersonatedUserName: impersonatedUser ? impersonatedUser.name : 'Unknown User'
+                };
+            }
         }
         
         // Build request information
@@ -849,7 +895,10 @@ const logCollaboratorAction = async (req, action, resource = '', context = {}) =
                 isImpersonating: tokenInfo.isImpersonating,
                 userId: userId,
                 collaboratorId: tokenInfo.collaboratorId,
-                collaboratorRole: tokenInfo.collaboratorRole
+                collaboratorRole: tokenInfo.collaboratorRole,
+                adminId: tokenInfo.adminId,
+                parentUserId: tokenInfo.parentUserId,
+                impersonationType: tokenInfo.impersonationType
             }
         };
         

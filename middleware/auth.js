@@ -44,15 +44,34 @@ const isAuthenticated = async (req, res, next) => {
           name: impersonatedUser.name
         };
         
-        // Set the admin info as the original user
-        const adminUser = await User.findById(decoded.adminId);
-        if (adminUser) {
-          req.originalUser = {
-            id: adminUser._id,
-            role: adminUser.role,
-            email: adminUser.email,
-            name: adminUser.name
-          };
+        // Handle admin impersonation
+        if (decoded.adminId) {
+          const adminUser = await User.findById(decoded.adminId);
+          if (adminUser) {
+            req.originalUser = {
+              id: adminUser._id,
+              role: adminUser.role,
+              email: adminUser.email,
+              name: adminUser.name
+            };
+          }
+          req.adminId = decoded.adminId;
+          req.impersonationType = 'admin';
+        }
+        
+        // Handle parent member impersonation
+        if (decoded.parentUserId) {
+          const parentUser = await User.findById(decoded.parentUserId);
+          if (parentUser) {
+            req.originalUser = {
+              id: parentUser._id,
+              role: parentUser.role,
+              email: parentUser.email,
+              name: parentUser.name
+            };
+          }
+          req.parentUserId = decoded.parentUserId;
+          req.impersonationType = 'member';
         }
         
         req.impersonatedUser = {
@@ -61,8 +80,6 @@ const isAuthenticated = async (req, res, next) => {
           email: impersonatedUser.email,
           name: impersonatedUser.name
         };
-        // Store the admin's ID from the token
-        req.adminId = decoded.adminId;
       }
     } else {
       // Regular login - set user info in request
@@ -211,12 +228,14 @@ const isMemberAdmin = async (req, res, next) => {
 // Get current user context (useful for determining if admin is impersonating)
 const getCurrentUserContext = (req) => {
   if (req.impersonatedUser) {
-    // When admin is impersonating, we need to get the admin's info
+    // When admin or parent member is impersonating, we need to get the original user's info
     return {
       currentUser: req.impersonatedUser,
-      originalUser: req.originalUser || req.user, // Use originalUser if available (admin info)
+      originalUser: req.originalUser || req.user, // Use originalUser if available (admin or parent info)
       isImpersonating: true,
-      adminId: req.adminId
+      adminId: req.adminId,
+      parentUserId: req.parentUserId,
+      impersonationType: req.impersonationType || (req.adminId ? 'admin' : 'member')
     };
   }
   

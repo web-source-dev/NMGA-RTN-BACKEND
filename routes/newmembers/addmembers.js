@@ -128,7 +128,7 @@ router.get('/members', isMemberAdmin, async (req, res) => {
     const parentUserId = currentUser.id;
     
     const parentUser = await User.findById(parentUserId)
-      .populate('addedMembers', 'name email businessName phone address _id')
+      .populate('addedMembers', 'name email businessName phone address _id login_key')
       .select('addedMembers');
     
     if (!parentUser) {
