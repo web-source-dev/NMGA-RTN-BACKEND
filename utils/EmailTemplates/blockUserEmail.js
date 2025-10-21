@@ -27,6 +27,6 @@ module.exports = (name) => baseTemplate(`
     </ol>
 
     <div style="text-align: center;">
-        <a href="${FRONTEND_URL}/support" class="button">Contact Support</a>
+        <a href="${FRONTEND_URL}/contact" class="button">Contact Support</a>
     </div>
 `);

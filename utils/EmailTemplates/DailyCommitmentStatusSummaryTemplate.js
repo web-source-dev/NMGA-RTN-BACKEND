@@ -137,51 +137,25 @@ const generateDailyCommitmentStatusSummary = (memberName, summaryData) => {
     </div>
   `;
   
-  const emailContent = `
-    <div style="max-width: 600px; margin: 0 auto; font-family: Arial, sans-serif; line-height: 1.6;">
-      <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-        <h1 style="margin: 0; font-size: 24px;">Daily Commitment Status Update</h1>
-        <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.9;">
-          Your commitment status updates for today
-        </p>
-      </div>
-      
-      <div style="background-color: #ffffff; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-        <p style="color: #495057; font-size: 16px; margin: 0 0 20px 0;">
-          Hello <strong>${memberName}</strong>,
-        </p>
-        
-        <p style="color: #6c757d; font-size: 14px; margin: 0 0 25px 0;">
-          Here's a summary of your commitment status updates for today. We've processed ${approvedCount + declinedCount} commitment${(approvedCount + declinedCount) !== 1 ? 's' : ''} across different deals.
-        </p>
-        
-        ${summaryStats}
-        
-        ${approvedSection}
-        
-        ${declinedSection}
-        
-        <div style="background-color: #f8f9fa; border-left: 4px solid #007bff; padding: 15px; margin: 20px 0;">
-          <p style="margin: 0; color: #495057; font-size: 14px;">
-            <strong>💡 Note:</strong> You can view all your commitments and their current status by logging into your NMGA account. 
-            If you have any questions about these updates, please contact the respective distributors or our support team.
-          </p>
-        </div>
-        
-        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e9ecef;">
-          <p style="color: #6c757d; font-size: 12px; margin: 0;">
-            This is an automated message from the New Mexico Grocers Association.<br>
-            Please do not reply to this email.
-          </p>
-        </div>
-      </div>
+  const content = `
+    <h2>Daily Commitment Status Update</h2>
+    <p>Hello <strong>${memberName}</strong>,</p>
+    
+    <p>Here's a summary of your commitment status updates for today. We've processed ${approvedCount + declinedCount} commitment${(approvedCount + declinedCount) !== 1 ? 's' : ''} across different deals.</p>
+    
+    ${summaryStats}
+    
+    ${approvedSection}
+    
+    ${declinedSection}
+    
+    <div class="alert-box alert-info">
+      <p><strong>💡 Note:</strong> You can view all your commitments and their current status by logging into your NMGA account. 
+      If you have any questions about these updates, please contact the respective distributors or our support team.</p>
     </div>
   `;
   
-  return baseTemplate.generateEmailTemplate(
-    'Daily Commitment Status Update',
-    emailContent
-  );
+  return baseTemplate(content);
 };
 
 module.exports = {

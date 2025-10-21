@@ -4,9 +4,9 @@ const Deal = require('../../models/Deals');
 const Commitment = require('../../models/Commitments');
 const User = require('../../models/User');
 const CommitmentStatusChange = require('../../models/CommitmentStatusChange');
-// Send email notifications to all users
-const sendEmail = require('../../utils/email');
-const CommitmentNotificationTemplate = require('../../utils/EmailTemplates/CommitmentNotificationTemplate');
+// Commitment email notifications disabled - using in-app notifications and daily summaries
+// const sendEmail = require('../../utils/email');
+// const CommitmentNotificationTemplate = require('../../utils/EmailTemplates/CommitmentNotificationTemplate');
 const { broadcastDealUpdate, broadcastSingleDealUpdate } = require('../../utils/dealUpdates');
 const { isDistributorAdmin,isAdmin, getCurrentUserContext } = require('../../middleware/auth');
 const { format } = require('date-fns');

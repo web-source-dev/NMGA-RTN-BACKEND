@@ -92,24 +92,6 @@ const postingDeadlineReminder = (distributorName, deals, reminderType, month, ye
  * @returns {string} - HTML email content
  */
 const dealApprovalReminder = (distributorName, deals) => {
-  const dealsList = deals.map(deal => {
-    const commitmentCount = deal.commitments ? deal.commitments.length : 0;
-    const totalQuantity = deal.commitments ? deal.commitments.reduce((sum, commitment) => {
-      return sum + (commitment.sizeCommitments ? commitment.sizeCommitments.reduce((sizeSum, sizeCommitment) => 
-        sizeSum + sizeCommitment.quantity, 0) : 0);
-    }, 0) : 0;
-    
-    return `
-      <div class="card">
-        <h4 class="card-header">${deal.name}</h4>
-        <p><strong>Category:</strong> ${deal.category || 'Not specified'}</p>
-        <p><strong>Commitment Window:</strong> ${new Date(deal.commitmentStartAt).toLocaleDateString()} - ${new Date(deal.commitmentEndsAt).toLocaleDateString()}</p>
-        <p><strong>Total Commitments:</strong> ${commitmentCount} members</p>
-        <p><strong>Total Quantity:</strong> ${totalQuantity} units</p>
-        <p><strong>Status:</strong> <span style="color: #856404; font-weight: bold;">Pending Approval</span></p>
-      </div>
-    `;
-  }).join('');
 
   const content = `
     <h1>Deal Approval Reminder</h1>
@@ -122,11 +104,6 @@ const dealApprovalReminder = (distributorName, deals) => {
     
     <p>The commitment window for your deals has closed, and members have made their commitments. It's now time to review and approve these commitments to finalize the deals.</p>
     
-    <h2>Deals Awaiting Approval</h2>
-    <p>The following deals have received commitments and are waiting for your approval:</p>
-    
-    ${dealsList}
-    
     <div class="alert-info">
       <strong>📋 Next Steps:</strong>
       <ul>
@@ -138,7 +115,7 @@ const dealApprovalReminder = (distributorName, deals) => {
     </div>
     
     <div style="text-align: center; margin: 30px 0;">
-      <a href="${process.env.FRONTEND_URL}/dashboard/distributor" class="button">
+      <a href="${process.env.FRONTEND_URL}/dashboard/distributor/all/committed/deals" class="button">
         Review Commitments
       </a>
     </div>

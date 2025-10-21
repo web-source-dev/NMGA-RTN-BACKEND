@@ -132,12 +132,12 @@ const checkDealExpiration = async () => {
             `Deals Ending in ${timeRemaining}` :
             ` Deal Ending in ${timeRemaining}`;
             
-          // Send email notification with just the first MAX_DEALS_PER_EMAIL deals
-          await sendEmail(
-            user.email,
-            emailSubject,
-            DealsBatchExpirationTemplate(user.name, dealsToShow, timeRemaining)
-          );
+          // Email notifications disabled - using in-app notifications only
+          // await sendEmail(
+          //   user.email,
+          //   emailSubject,
+          //   DealsBatchExpirationTemplate(user.name, dealsToShow, timeRemaining)
+          // );
           
           // Record successful notifications for ALL deals (even ones not shown in the email)
           for (const deal of deals) {
