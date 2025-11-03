@@ -36,7 +36,6 @@ const featureSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Index for faster queries
-featureSchema.index({ name: 1 });
+// Note: No need for explicit index on 'name' - unique: true already creates an index
 
 module.exports = mongoose.model('Feature', featureSchema);

@@ -6,7 +6,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "search-text": "node searchEmails.js"
+    "search-text": "node searchEmails.js",
+    "dealExpirationCheck": "node utils/dealExpirationCheck.js"
   },
   "author": "",
   "license": "ISC",

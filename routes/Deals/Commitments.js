@@ -859,12 +859,42 @@ router.get("/admin/statistics", isAdmin, async (req, res) => {
     const { currentUser, originalUser, isImpersonating } = getCurrentUserContext(req);
     const adminId = currentUser.id;
 
-    // Get overall statistics
-    const commitments = await Commitment.find({}).populate('dealId');
+    // Get month filter from query params (format: YYYY-MM or 'all')
+    const { month } = req.query;
+    let dateFilter = {};
+    let timelineStartDate = new Date();
+    
+    if (month && month !== 'all') {
+      // Parse month filter (format: YYYY-MM)
+      const [year, monthNum] = month.split('-');
+      const monthStart = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
+      const monthEnd = new Date(parseInt(year), parseInt(monthNum), 0, 23, 59, 59, 999);
+      
+      dateFilter = {
+        createdAt: {
+          $gte: monthStart,
+          $lte: monthEnd
+        }
+      };
+      
+      // For timeline, show data from month start to now (or month end if month is in the past)
+      timelineStartDate = monthStart;
+    } else {
+      // Default: last 30 days for timeline
+      timelineStartDate.setDate(timelineStartDate.getDate() - 30);
+    }
+
+    // Get overall statistics with date filter
+    const commitmentsQuery = Object.keys(dateFilter).length > 0 
+      ? Commitment.find(dateFilter).populate('dealId')
+      : Commitment.find({}).populate('dealId');
+    const commitments = await commitmentsQuery;
     
     // Calculate totals manually to handle the new sizeCommitments structure
+    // IMPORTANT: Match monthly summary - only count APPROVED commitments for revenue
     let totalCommitments = commitments.length;
-    let totalAmount = 0;
+    let totalAmount = 0; // All commitments amount (for reference)
+    let totalRevenue = 0; // Only approved commitments revenue (matching monthly summary)
     let pendingCount = 0;
     let approvedCount = 0;
     let declinedCount = 0;
@@ -873,8 +903,13 @@ router.get("/admin/statistics", isAdmin, async (req, res) => {
     let totalQuantity = 0;
     
     commitments.forEach(commitment => {
-      // Add up financial data
+      // Add up financial data - total amount includes all statuses (for reference)
       totalAmount += commitment.totalPrice || 0;
+      
+      // Revenue: Only count APPROVED commitments (matching monthly summary)
+      if (commitment.status === 'approved') {
+        totalRevenue += commitment.totalPrice || 0;
+      }
       
       // Count by status
       if (commitment.status === 'pending') pendingCount++;
@@ -895,17 +930,17 @@ router.get("/admin/statistics", isAdmin, async (req, res) => {
       }
     });
     
-    // Calculate average transaction value
-    const avgTransactionValue = totalCommitments > 0 ? totalAmount / totalCommitments : 0;
+    // Calculate average transaction value (using approved commitments for revenue)
+    const avgTransactionValue = approvedCount > 0 ? totalRevenue / approvedCount : 0;
 
-    // Get timeline data for the last 30 days
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // Get timeline data - use filtered date range
+    const timelineEndDate = new Date();
 
-    // Group commitments by date and status
+    // Group commitments by date and status (apply date filter if month is specified)
     const timelineMap = {};
     commitments.forEach(commitment => {
-      if (commitment.createdAt >= thirtyDaysAgo) {
+      const commitmentDate = new Date(commitment.createdAt);
+      if (commitmentDate >= timelineStartDate && commitmentDate <= timelineEndDate) {
         const dateKey = commitment.createdAt.toISOString().slice(0, 10);
         
         if (!timelineMap[dateKey]) {
@@ -1008,9 +1043,14 @@ router.get("/admin/statistics", isAdmin, async (req, res) => {
       .sort((a, b) => b.totalAmount - a.totalAmount)
       .slice(0, 5);
 
+    // Get total members and distributors counts from User model
+    const membersCount = await User.countDocuments({ role: "member" });
+    const distributorsCount = await User.countDocuments({ role: "distributor" });
+
     res.json({
       totalCommitments,
-      totalAmount,
+      totalAmount, // All commitments amount (for reference)
+      totalRevenue, // Only approved commitments revenue (matching monthly summary)
       totalQuantity,
       pendingCount,
       approvedCount,
@@ -1020,7 +1060,9 @@ router.get("/admin/statistics", isAdmin, async (req, res) => {
       growth,
       totalDistributors: totalDistributors.size,
       totalMembers: totalMembers.size,
-      avgTransactionValue
+      avgTransactionValue,
+      members: membersCount,
+      distributors: distributorsCount
     });
   } catch (error) {
     console.error("Error fetching commitment statistics:", error);

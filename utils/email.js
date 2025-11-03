@@ -2,7 +2,7 @@ const SibApiV3Sdk = require('@getbrevo/brevo');
 const User = require('../models/User');
 const { isFeatureEnabled } = require('../config/features');
 
-const sendEmail = async (to, subject, html) => {
+const sendEmail = async (to, subject, html, attachment = null) => {
   // Check if email feature is disabled
   if (!(await isFeatureEnabled('EMAIL'))) {
     const timestamp = new Date().toISOString();
@@ -60,6 +60,11 @@ const sendEmail = async (to, subject, html) => {
     name: "New Mexico Grocers Association",
     email: process.env.BREVO_EMAIL_USER
   };
+
+  // Add attachment if provided
+  if (attachment) {
+    sendSmtpEmail.attachment = [attachment];
+  }
   
   const timestamp = new Date().toISOString();
   console.log('📧 Attempting to send email:', {
