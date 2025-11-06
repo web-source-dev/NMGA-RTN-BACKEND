@@ -73,24 +73,29 @@ router.get('/template', isDistributorAdmin, async (req, res) => {
         { id: 'Min Quantity for Discount', title: 'Min Quantity for Discount' },
         { id: 'Single Store Deals', title: 'Single Store Deals' },
         { id: 'Image URLs', title: 'Image URLs (Separate with ; or leave empty for default category images)' },
-        // Size columns - up to 10 sizes supported
+        // Size columns - up to 5 sizes supported
         { id: 'Size 1', title: 'Size 1' },
+        { id: 'Bottle Label 1', title: 'Bottle Label 1 (Optional)' },
         { id: 'Original Cost 1', title: 'Original Cost 1' },
         { id: 'Discount Price 1', title: 'Discount Price 1' },
         { id: 'Discount Tiers 1', title: 'Discount Tiers 1 (Format: Qty1-Disc1,Qty2-Disc2)' },
         { id: 'Size 2', title: 'Size 2' },
+        { id: 'Bottle Label 2', title: 'Bottle Label 2 (Optional)' },
         { id: 'Original Cost 2', title: 'Original Cost 2' },
         { id: 'Discount Price 2', title: 'Discount Price 2' },
         { id: 'Discount Tiers 2', title: 'Discount Tiers 2 (Format: Qty1-Disc1,Qty2-Disc2)' },
         { id: 'Size 3', title: 'Size 3' },
+        { id: 'Bottle Label 3', title: 'Bottle Label 3 (Optional)' },
         { id: 'Original Cost 3', title: 'Original Cost 3' },
         { id: 'Discount Price 3', title: 'Discount Price 3' },
         { id: 'Discount Tiers 3', title: 'Discount Tiers 3 (Format: Qty1-Disc1,Qty2-Disc2)' },
         { id: 'Size 4', title: 'Size 4' },
+        { id: 'Bottle Label 4', title: 'Bottle Label 4 (Optional)' },
         { id: 'Original Cost 4', title: 'Original Cost 4' },
         { id: 'Discount Price 4', title: 'Discount Price 4' },
         { id: 'Discount Tiers 4', title: 'Discount Tiers 4 (Format: Qty1-Disc1,Qty2-Disc2)' },
         { id: 'Size 5', title: 'Size 5' },
+        { id: 'Bottle Label 5', title: 'Bottle Label 5 (Optional)' },
         { id: 'Original Cost 5', title: 'Original Cost 5' },
         { id: 'Discount Price 5', title: 'Discount Price 5' },
         { id: 'Discount Tiers 5', title: 'Discount Tiers 5 (Format: Qty1-Disc1,Qty2-Disc2)' }
@@ -114,22 +119,27 @@ router.get('/template', isDistributorAdmin, async (req, res) => {
             'Single Store Deals': 'Store A: Special offer details',
             'Image URLs': defaultImages['Wine'].join(';'),
             'Size 1': '750ml',
+            'Bottle Label 1': 'Premium Red Wine',
             'Original Cost 1': '29.99',
             'Discount Price 1': '24.99',
             'Discount Tiers 1': '75-23.99,100-22.99',
             'Size 2': '1.5L',
+            'Bottle Label 2': 'Premium Red Wine Large',
             'Original Cost 2': '49.99',
             'Discount Price 2': '42.99',
             'Discount Tiers 2': '75-39.99,100-38.99',
             'Size 3': '',
+            'Bottle Label 3': '',
             'Original Cost 3': '',
             'Discount Price 3': '',
             'Discount Tiers 3': '',
             'Size 4': '',
+            'Bottle Label 4': '',
             'Original Cost 4': '',
             'Discount Price 4': '',
             'Discount Tiers 4': '',
             'Size 5': '',
+            'Bottle Label 5': '',
             'Original Cost 5': '',
             'Discount Price 5': '',
             'Discount Tiers 5': ''
@@ -455,11 +465,11 @@ const csvOptions = {
         'Single Store Deals',
         'Image URLs',
         // Size columns
-        'Size 1', 'Original Cost 1', 'Discount Price 1', 'Discount Tiers 1',
-        'Size 2', 'Original Cost 2', 'Discount Price 2', 'Discount Tiers 2',
-        'Size 3', 'Original Cost 3', 'Discount Price 3', 'Discount Tiers 3',
-        'Size 4', 'Original Cost 4', 'Discount Price 4', 'Discount Tiers 4',
-        'Size 5', 'Original Cost 5', 'Discount Price 5', 'Discount Tiers 5'
+        'Size 1', 'Bottle Label 1', 'Original Cost 1', 'Discount Price 1', 'Discount Tiers 1',
+        'Size 2', 'Bottle Label 2', 'Original Cost 2', 'Discount Price 2', 'Discount Tiers 2',
+        'Size 3', 'Bottle Label 3', 'Original Cost 3', 'Discount Price 3', 'Discount Tiers 3',
+        'Size 4', 'Bottle Label 4', 'Original Cost 4', 'Discount Price 4', 'Discount Tiers 4',
+        'Size 5', 'Bottle Label 5', 'Original Cost 5', 'Discount Price 5', 'Discount Tiers 5'
     ],
     trim: true,
     skipEmptyLines: true
@@ -521,22 +531,27 @@ router.post('/upload', isDistributorAdmin, upload.single('file'), async (req, re
                             images: row['Image URLs'] || '',
                             // Size fields
                             size1: row['Size 1'] || '',
+                            bottleLabel1: row['Bottle Label 1'] || '',
                             originalCost1: row['Original Cost 1'] || '',
                             discountPrice1: row['Discount Price 1'] || '',
                             discountTiers1: row['Discount Tiers 1'] || '',
                             size2: row['Size 2'] || '',
+                            bottleLabel2: row['Bottle Label 2'] || '',
                             originalCost2: row['Original Cost 2'] || '',
                             discountPrice2: row['Discount Price 2'] || '',
                             discountTiers2: row['Discount Tiers 2'] || '',
                             size3: row['Size 3'] || '',
+                            bottleLabel3: row['Bottle Label 3'] || '',
                             originalCost3: row['Original Cost 3'] || '',
                             discountPrice3: row['Discount Price 3'] || '',
                             discountTiers3: row['Discount Tiers 3'] || '',
                             size4: row['Size 4'] || '',
+                            bottleLabel4: row['Bottle Label 4'] || '',
                             originalCost4: row['Original Cost 4'] || '',
                             discountPrice4: row['Discount Price 4'] || '',
                             discountTiers4: row['Discount Tiers 4'] || '',
                             size5: row['Size 5'] || '',
+                            bottleLabel5: row['Bottle Label 5'] || '',
                             originalCost5: row['Original Cost 5'] || '',
                             discountPrice5: row['Discount Price 5'] || '',
                             discountTiers5: row['Discount Tiers 5'] || ''
@@ -577,6 +592,7 @@ router.post('/upload', isDistributorAdmin, upload.single('file'), async (req, re
                         const sizes = [];
                         for (let i = 1; i <= 5; i++) {
                             const size = normalizedRow[`size${i}`]?.trim();
+                            const bottleLabel = normalizedRow[`bottleLabel${i}`]?.trim();
                             const originalCost = normalizedRow[`originalCost${i}`]?.trim();
                             const discountPrice = normalizedRow[`discountPrice${i}`]?.trim();
                             const discountTiersStr = normalizedRow[`discountTiers${i}`]?.trim();
@@ -596,6 +612,7 @@ router.post('/upload', isDistributorAdmin, upload.single('file'), async (req, re
                                 
                                 sizes.push({
                                     size: size,
+                                    name: bottleLabel || '', // Bottle label is optional
                                     originalCost: Number(originalCost),
                                     discountPrice: Number(discountPrice),
                                     discountTiers: discountTiers

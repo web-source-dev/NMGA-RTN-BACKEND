@@ -45,6 +45,7 @@ const commitmentStatusChangeSchema = new mongoose.Schema({
   commitmentDetails: {
     sizeCommitments: [{
       size: String,
+      name: String,
       quantity: Number,
       pricePerUnit: Number,
       totalPrice: Number,

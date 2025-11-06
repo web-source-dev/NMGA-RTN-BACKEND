@@ -69,12 +69,16 @@ router.post("/buy/:dealId", isMemberAdmin, async (req, res) => {
     }
 
     // Validate that each size in the commitment exists in the deal
+    // Match by both size and name if available to handle multiple sizes with same size value
     for (const sizeCommit of sizeCommitments) {
-      const matchingSize = deal.sizes.find(s => s.size === sizeCommit.size);
+      const matchingSize = deal.sizes.find(s => 
+        s.size === sizeCommit.size && 
+        ((sizeCommit.name && s.name === sizeCommit.name) || (!sizeCommit.name && !s.name))
+      );
       if (!matchingSize) {
         return res.status(400).json({
           error: "Invalid size",
-          message: `Size "${sizeCommit.size}" does not exist in this deal`
+          message: `Size "${sizeCommit.size}${sizeCommit.name ? ` (${sizeCommit.name})` : ''}" does not exist in this deal`
         });
       }
     }
@@ -86,26 +90,29 @@ router.post("/buy/:dealId", isMemberAdmin, async (req, res) => {
       });
       
     // Calculate total quantities per size across all commitments
+    // Use a composite key (size + name) to handle multiple sizes with same size value
     const sizeTotals = {};
     
     // First, tally up quantities from existing commitments
     existingCommitments.forEach(commitment => {
         if (commitment.sizeCommitments && Array.isArray(commitment.sizeCommitments)) {
         commitment.sizeCommitments.forEach(sc => {
-          if (!sizeTotals[sc.size]) {
-            sizeTotals[sc.size] = 0;
+          const key = sc.name ? `${sc.size}_${sc.name}` : sc.size;
+          if (!sizeTotals[key]) {
+            sizeTotals[key] = 0;
           }
-          sizeTotals[sc.size] += sc.quantity;
+          sizeTotals[key] += sc.quantity;
         });
       }
     });
       
     // Add the new commitment quantities
     sizeCommitments.forEach(sc => {
-      if (!sizeTotals[sc.size]) {
-        sizeTotals[sc.size] = 0;
+      const key = sc.name ? `${sc.size}_${sc.name}` : sc.size;
+      if (!sizeTotals[key]) {
+        sizeTotals[key] = 0;
       }
-      sizeTotals[sc.size] += sc.quantity;
+      sizeTotals[key] += sc.quantity;
     });
 
     // Process each size commitment with potential tier discounts
@@ -113,7 +120,18 @@ router.post("/buy/:dealId", isMemberAdmin, async (req, res) => {
     const processedSizeCommitments = [];
     
     for (const sizeCommit of sizeCommitments) {
-      const matchingSize = deal.sizes.find(s => s.size === sizeCommit.size);
+      // Match by both size and name if available
+      const matchingSize = deal.sizes.find(s => 
+        s.size === sizeCommit.size && 
+        ((sizeCommit.name && s.name === sizeCommit.name) || (!sizeCommit.name && !s.name))
+      );
+      if (!matchingSize) {
+        return res.status(400).json({
+          error: "Invalid size",
+          message: `Size "${sizeCommit.size}${sizeCommit.name ? ` (${sizeCommit.name})` : ''}" does not exist in this deal`
+        });
+      }
+      
       const quantityForSize = Number(sizeCommit.quantity);
       let pricePerUnit = Number(matchingSize.discountPrice);
       let appliedDiscountTier = null;
@@ -121,8 +139,9 @@ router.post("/buy/:dealId", isMemberAdmin, async (req, res) => {
       // Check for size-specific discount tiers
       if (matchingSize.discountTiers && matchingSize.discountTiers.length > 0) {
         // Get total quantity for this specific size ACROSS ALL COMMITMENTS
-        // This implements the collective volume discount approach
-        const sizeTotal = sizeTotals[sizeCommit.size] || 0;
+        // Use composite key to handle multiple sizes with same size value
+        const key = sizeCommit.name ? `${sizeCommit.size}_${sizeCommit.name}` : sizeCommit.size;
+        const sizeTotal = sizeTotals[key] || 0;
       
       // Sort tiers by quantity in descending order to find the highest applicable tier
         const sortedTiers = [...matchingSize.discountTiers].sort((a, b) => b.tierQuantity - a.tierQuantity);
@@ -142,6 +161,7 @@ router.post("/buy/:dealId", isMemberAdmin, async (req, res) => {
       
       processedSizeCommitments.push({
         size: sizeCommit.size,
+        name: sizeCommit.name || matchingSize.name || undefined,
         quantity: quantityForSize,
         pricePerUnit: pricePerUnit,
         originalPricePerUnit: Number(matchingSize.discountPrice),
@@ -511,12 +531,15 @@ router.put("/update-status", async (req, res) => {
       let totalModifiedPrice = 0;
       
       for (const sizeCommit of modifiedSizeCommitments) {
-        // Verify size exists in the deal
-        const matchingDealSize = commitment.dealId.sizes.find(s => s.size === sizeCommit.size);
+        // Verify size exists in the deal - match by both size and name if available
+        const matchingDealSize = commitment.dealId.sizes.find(s => 
+          s.size === sizeCommit.size && 
+          ((sizeCommit.name && s.name === sizeCommit.name) || (!sizeCommit.name && !s.name))
+        );
         if (!matchingDealSize) {
           return res.status(400).json({
             error: "Invalid size",
-            message: `Size "${sizeCommit.size}" does not exist in this deal`
+            message: `Size "${sizeCommit.size}${sizeCommit.name ? ` (${sizeCommit.name})` : ''}" does not exist in this deal`
           });
         }
         

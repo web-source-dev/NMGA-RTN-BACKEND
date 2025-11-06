@@ -5,6 +5,7 @@ const commitmentSchema = new mongoose.Schema({
     dealId: { type: mongoose.Schema.Types.ObjectId, ref: "Deal", required: true },
     sizeCommitments: [{
       size: { type: String, required: true },
+      name: { type: String, default: '' },
       quantity: { type: Number, required: true },
       pricePerUnit: { type: Number, required: true },
       totalPrice: { type: Number, required: true },
@@ -29,6 +30,7 @@ const commitmentSchema = new mongoose.Schema({
     },
     modifiedSizeCommitments: [{
       size: { type: String },
+      name: { type: String, default: '' },
       quantity: { type: Number },
       pricePerUnit: { type: Number },
       totalPrice: { type: Number }

@@ -10,6 +10,10 @@ const dealSchema = new mongoose.Schema({
       type: String,
       required: true
     },
+    name: {
+      type: String,
+      default: ''
+    },
     originalCost: {
       type: Number,
       required: true
