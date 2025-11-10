@@ -119,9 +119,9 @@ router.get('/distributor-deals', isDistributorAdmin, async (req, res) => {
         if (month && month !== '') {
             // If month is specified, filter by that month
             const currentYear = new Date().getFullYear();
-            const monthIndex = parseInt(month); // Convert to 0-based index
-            const startOfMonth = new Date(currentYear, monthIndex, 1);
-            const endOfMonth = new Date(currentYear, monthIndex + 1, 0, 23, 59, 59);
+            const monthIndex = parseInt(month) - 2; // Convert to 0-based index
+            const startOfMonth = new Date(currentYear, monthIndex, 5, 0, 0, 0);
+            const endOfMonth = new Date(currentYear, monthIndex, 25, 23, 59, 59);
             dateQuery = buildDateOverlapQuery(startOfMonth, endOfMonth);
         } else if (startDate && endDate) {
             // If date range is specified
@@ -305,8 +305,8 @@ router.get('/admin-all-deals', isAdmin, async (req, res) => {
             // If month is specified, filter by that month
             const currentYear = new Date().getFullYear();
             const monthIndex = parseInt(month) - 2; // Convert to 0-based index
-            const startOfMonth = new Date(currentYear, monthIndex, 1);
-            const endOfMonth = new Date(currentYear, monthIndex + 1, 0, 23, 59, 59);
+            const startOfMonth = new Date(currentYear, monthIndex, 5, 0, 0, 0);
+            const endOfMonth = new Date(currentYear, monthIndex, 25, 23, 59, 59);
             dateQuery = buildDateOverlapQuery(startOfMonth, endOfMonth);
         } else if (startDate && endDate) {
             // If date range is specified
