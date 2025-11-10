@@ -2,7 +2,6 @@ const express = require("express");
 const Commitment = require("../../models/Commitments");
 const Deal = require("../../models/Deals");
 const User = require('../../models/User');
-const { sendDealMessage } = require('../../utils/message');
 const { createNotification, notifyUsersByRole } = require('../Common/Notification');
 const DailyCommitmentSummary = require('../../models/DailyCommitmentSummary');
 const { isAuthenticated, isMemberAdmin, getCurrentUserContext, isAdmin } = require('../../middleware/auth');
@@ -641,23 +640,6 @@ router.put("/update-status", async (req, res) => {
       onModel: 'Commitment',
       priority: 'medium'
     });
-
-    // Send SMS notifications
-    if (commitment.userId.phone) {
-      try {
-        const commitmentInfo = {
-          dealName: commitment.dealId.name,
-          status: status,
-          details: commitment.modifiedByDistributor ? 
-            `Modified: ${modifiedSizeDetails}, Total: $${commitment.modifiedTotalPrice.toFixed(2)}` : 
-            `${originalSizeDetails}${discountTierMessage}, Total: $${commitment.totalPrice.toFixed(2)}`,
-          message: distributorResponse
-        };
-        await sendDealMessage.commitmentUpdate(commitment.userId.phone, commitmentInfo);
-      } catch (error) {
-        console.error('Failed to send commitment update SMS:', error);
-      }
-    }
 
     // Log the action
     await logCollaboratorAction(req, 'update_commitment_status', 'commitment', {

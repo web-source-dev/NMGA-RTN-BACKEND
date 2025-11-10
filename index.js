@@ -5,7 +5,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
 // const checkDealExpiration = require('./utils/dealExpirationCheck');
-const { initializeTwilio } = require('./utils/message');
+const { initializeSmsClient } = require('./utils/message');
 const { initializeScheduler } = require('./utils/scheduler');
 const { initializeFeatures, logFeatureStatus } = require('./config/features');
 const app = express();
@@ -97,9 +97,8 @@ app.use("/api/media-manager", mediaManagerRoutes);
 // Add this near the start of your application
 const validateEnvVariables = () => {
     const required = [
-        'TWILIO_ACCOUNT_SID',
-        'TWILIO_AUTH_TOKEN',
-        'TWILIO_PHONE_NUMBER',
+        'BREVO_API_KEY',
+        'BREVO_SMS_SENDER',
         'GOOGLE_SHEET_ID'
     ];
 
@@ -114,13 +113,12 @@ validateEnvVariables();
 // Verify environment variables are loaded
 console.log('Environment Check:', {
     port: process.env.PORT ? 'Found' : 'Missing',
-    twilioSid: process.env.TWILIO_ACCOUNT_SID ? 'Found' : 'Missing',
-    twilioToken: process.env.TWILIO_AUTH_TOKEN ? 'Found' : 'Missing',
-    twilioPhone: process.env.TWILIO_PHONE_NUMBER ? 'Found' : 'Missing'
+    brevoApiKey: process.env.BREVO_API_KEY ? 'Found' : 'Missing',
+    brevoSmsSender: process.env.BREVO_SMS_SENDER ? 'Found' : 'Missing'
 });
 
-// Initialize Twilio after environment variables are loaded
-initializeTwilio();
+// Initialize Brevo SMS after environment variables are loaded
+initializeSmsClient();
 
 // Replace app.listen with server.listen
 server.listen(port, async () => {

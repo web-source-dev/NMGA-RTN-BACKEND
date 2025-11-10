@@ -45,6 +45,36 @@ const storeCommitmentStatusChange = async (commitment, deal, newStatus, distribu
   }
 };
 
+const buildDateOverlapQuery = (startDate, endDate) => ({
+  $or: [
+    {
+      $and: [
+        { dealStartAt: { $lte: endDate } },
+        { dealEndsAt: { $gte: startDate } }
+      ]
+    },
+    {
+      $and: [
+        { commitmentStartAt: { $lte: endDate } },
+        { commitmentEndsAt: { $gte: startDate } }
+      ]
+    },
+    {
+      $and: [
+        { dealStartAt: { $exists: false } },
+        { dealEndsAt: { $gte: startDate, $lte: endDate } }
+      ]
+    },
+    {
+      $and: [
+        { dealStartAt: { $exists: false } },
+        { dealEndsAt: { $exists: false } },
+        { createdAt: { $gte: startDate, $lte: endDate } }
+      ]
+    }
+  ]
+});
+
 // Get all deals with commitments for a distributor
 router.get('/distributor-deals', isDistributorAdmin, async (req, res) => {
     try {
@@ -89,36 +119,16 @@ router.get('/distributor-deals', isDistributorAdmin, async (req, res) => {
         if (month && month !== '') {
             // If month is specified, filter by that month
             const currentYear = new Date().getFullYear();
-            const monthIndex = parseInt(month) - 1; // Convert to 0-based index
+            const monthIndex = parseInt(month); // Convert to 0-based index
             const startOfMonth = new Date(currentYear, monthIndex, 1);
             const endOfMonth = new Date(currentYear, monthIndex + 1, 0, 23, 59, 59);
-            dateQuery = { 
-                $or: [
-                    // Deal created in this month
-                    { createdAt: { $gte: startOfMonth, $lte: endOfMonth } },
-                    // Deal ends in this month
-                    { dealEndsAt: { $gte: startOfMonth, $lte: endOfMonth } }
-                ]
-            };
+            dateQuery = buildDateOverlapQuery(startOfMonth, endOfMonth);
         } else if (startDate && endDate) {
             // If date range is specified
             const startDateObj = new Date(startDate);
             const endDateObj = new Date(endDate);
             endDateObj.setHours(23, 59, 59, 999); // Set to end of day
-            
-            dateQuery = {
-                $or: [
-                    // Deal created in date range
-                    { createdAt: { $gte: startDateObj, $lte: endDateObj } },
-                    // Deal ends in date range
-                    { dealEndsAt: { $gte: startDateObj, $lte: endDateObj } },
-                    // Deal spans the date range (starts before, ends after)
-                    {
-                        createdAt: { $lte: startDateObj },
-                        dealEndsAt: { $gte: endDateObj }
-                    }
-                ]
-            };
+            dateQuery = buildDateOverlapQuery(startDateObj, endDateObj);
         }
         
         // Only apply date query if there are date filters
@@ -294,36 +304,16 @@ router.get('/admin-all-deals', isAdmin, async (req, res) => {
         if (month && month !== '') {
             // If month is specified, filter by that month
             const currentYear = new Date().getFullYear();
-            const monthIndex = parseInt(month) - 1; // Convert to 0-based index
+            const monthIndex = parseInt(month) - 2; // Convert to 0-based index
             const startOfMonth = new Date(currentYear, monthIndex, 1);
             const endOfMonth = new Date(currentYear, monthIndex + 1, 0, 23, 59, 59);
-            dateQuery = { 
-                $or: [
-                    // Deal created in this month
-                    { createdAt: { $gte: startOfMonth, $lte: endOfMonth } },
-                    // Deal ends in this month
-                    { dealEndsAt: { $gte: startOfMonth, $lte: endOfMonth } }
-                ]
-            };
+            dateQuery = buildDateOverlapQuery(startOfMonth, endOfMonth);
         } else if (startDate && endDate) {
             // If date range is specified
             const startDateObj = new Date(startDate);
             const endDateObj = new Date(endDate);
             endDateObj.setHours(23, 59, 59, 999); // Set to end of day
-            
-            dateQuery = {
-                $or: [
-                    // Deal created in date range
-                    { createdAt: { $gte: startDateObj, $lte: endDateObj } },
-                    // Deal ends in date range
-                    { dealEndsAt: { $gte: startDateObj, $lte: endDateObj } },
-                    // Deal spans the date range (starts before, ends after)
-                    {
-                        createdAt: { $lte: startDateObj },
-                        dealEndsAt: { $gte: endDateObj }
-                    }
-                ]
-            };
+            dateQuery = buildDateOverlapQuery(startDateObj, endDateObj);
         }
         
         // Only apply date query if there are date filters

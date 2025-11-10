@@ -1,37 +1,55 @@
-const twilio = require('twilio');
+const axios = require('axios');
 const AuthMessages = require('./MessageTemplates/AuthMessages');
-const DealMessages = require('./MessageTemplates/DealMessages');
 const { isFeatureEnabled } = require('../config/features');
 
 require('dotenv').config();
-let twilioClient = null;
+let smsConfig = {
+    apiKey: null,
+    sender: null,
+    organisationPrefix: null,
+    webUrl: null,
+    defaultType: 'transactional',
+    unicodeEnabled: false
+};
+let smsClientReady = false;
 
-// Create a function to initialize Twilio
-const initializeTwilio = () => {
+// Create a function to initialize Brevo SMS
+const initializeSmsClient = () => {
     try {
         // Verify environment variables
         const config = {
-            accountSid: process.env.TWILIO_ACCOUNT_SID,
-            authToken: process.env.TWILIO_AUTH_TOKEN,
-            phoneNumber: process.env.TWILIO_PHONE_NUMBER
+            apiKey: process.env.BREVO_API_KEY,
+            sender: process.env.BREVO_SMS_SENDER,
+            organisationPrefix: process.env.BREVO_SMS_ORG_PREFIX || null,
+            webUrl: process.env.BREVO_SMS_WEBHOOK || null,
+            unicodeEnabled: process.env.BREVO_SMS_UNICODE === 'true'
         };
 
-        console.log('Twilio Configuration Check:', {
-            accountSid: config.accountSid ? 'Found' : 'Missing',
-            authToken: config.authToken ? 'Found' : 'Missing',
-            phoneNumber: config.phoneNumber ? 'Found' : 'Missing'
+        console.log('Brevo SMS Configuration Check:', {
+            apiKey: config.apiKey ? 'Found' : 'Missing',
+            sender: config.sender ? 'Found' : 'Missing',
+            organisationPrefix: config.organisationPrefix ? 'Found' : 'Missing (optional)',
+            webUrl: config.webUrl ? 'Found' : 'Missing (optional)'
         });
 
-        if (config.accountSid && config.authToken && config.phoneNumber) {
-            twilioClient = twilio(config.accountSid, config.authToken);
-            console.log('Twilio client initialized successfully');
+        if (config.apiKey && config.sender) {
+            smsConfig = {
+                ...smsConfig,
+                apiKey: config.apiKey,
+                sender: config.sender,
+                organisationPrefix: config.organisationPrefix,
+                webUrl: config.webUrl,
+                unicodeEnabled: config.unicodeEnabled
+            };
+            smsClientReady = true;
+            console.log('Brevo SMS client initialized successfully');
             return true;
         } else {
-            console.warn('Missing required Twilio credentials');
+            console.warn('Missing required Brevo SMS credentials');
             return false;
         }
     } catch (error) {
-        console.error('Error initializing Twilio client:', error);
+        console.error('Error initializing Brevo SMS client:', error);
         return false;
     }
 };
@@ -46,12 +64,8 @@ const sendSMS = async (to, message) => {
             return true; // Return true to indicate "success" but no actual SMS sent
         }
 
-        if (!twilioClient) {
-            throw new Error('Twilio client not initialized. Check credentials.');
-        }
-
-        if (!process.env.TWILIO_PHONE_NUMBER) {
-            throw new Error('Twilio phone number not configured');
+        if (!smsClientReady) {
+            throw new Error('Brevo SMS client not initialized. Check credentials.');
         }
 
         if (!to || !message) {
@@ -64,17 +78,39 @@ const sendSMS = async (to, message) => {
             throw new Error(`Invalid phone number format: ${to}`);
         }
 
-        const response = await twilioClient.messages.create({
-            body: message,
-            from: process.env.TWILIO_PHONE_NUMBER,
-            to: to
-        });
+        const payload = {
+            sender: smsConfig.sender,
+            recipient: to,
+            content: message,
+            type: smsConfig.defaultType,
+            unicodeEnabled: smsConfig.unicodeEnabled
+        };
+
+        if (smsConfig.organisationPrefix) {
+            payload.organisationPrefix = smsConfig.organisationPrefix;
+        }
+
+        if (smsConfig.webUrl) {
+            payload.webUrl = smsConfig.webUrl;
+        }
+
+        const response = await axios.post(
+            'https://api.brevo.com/v3/transactionalSMS/send',
+            payload,
+            {
+                headers: {
+                    'accept': 'application/json',
+                    'content-type': 'application/json',
+                    'api-key': smsConfig.apiKey
+                }
+            }
+        );
         
-        console.log('SMS sent successfully:', {
-            from: process.env.TWILIO_PHONE_NUMBER,
+        console.log('SMS sent successfully via Brevo:', {
+            from: smsConfig.sender,
             to: to,
-            messageId: response.sid,
-            status: response.status
+            messageId: response?.data?.messageId,
+            remainingCredits: response?.data?.remainingCredits
         });
         
         return true;
@@ -108,11 +144,6 @@ const sendAuthMessage = {
         return await sendSMS(phone, message);
     }),
 
-    login: withErrorHandling(async (phone, userInfo) => {
-        const message = AuthMessages.login(userInfo);
-        return await sendSMS(phone, message);
-    }),
-
     passwordReset: withErrorHandling(async (phone, userInfo) => {
         const message = AuthMessages.passwordReset(userInfo.name);
         return await sendSMS(phone, message);
@@ -129,45 +160,10 @@ const sendAuthMessage = {
     })
 };
 
-// Deal-related message functions
-const sendDealMessage = {
-    newDeal: withErrorHandling(async (phone, dealInfo) => {
-        const message = DealMessages.newDeal(dealInfo);
-        return await sendSMS(phone, message);
-    }),
-
-    dealExpiration: withErrorHandling(async (phone, dealInfo) => {
-        const message = DealMessages.dealExpiration(dealInfo);
-        return await sendSMS(phone, message);
-    }),
-
-    genericMessage: withErrorHandling(async (phone, message) => {
-        return await sendSMS(phone, message);
-    }),
-
-    commitmentUpdate: withErrorHandling(async (phone, commitmentInfo) => {
-        const message = DealMessages.commitmentStatusUpdate(
-            commitmentInfo.dealName, 
-            commitmentInfo.status, 
-            commitmentInfo.modifiedDetails
-        );
-        return await sendSMS(phone, message);
-    }),
-
-    orderConfirmation: withErrorHandling(async (phone, orderInfo) => {
-        const message = DealMessages.orderConfirmation(orderInfo);
-        return await sendSMS(phone, message);
-    }),
-
-    bulkUploadNotification: withErrorHandling(async (phone, count) => {
-        const message = DealMessages.bulkUploadSuccess(count);
-        return await sendSMS(phone, message);
-    })
-};
-
 module.exports = {
     sendSMS,
     sendAuthMessage,
-    sendDealMessage,
-    initializeTwilio
+    initializeSmsClient
 };
+
+module.exports.initializeTwilio = initializeSmsClient;

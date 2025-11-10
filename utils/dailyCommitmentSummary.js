@@ -1,6 +1,7 @@
 const DailyCommitmentSummary = require('../models/DailyCommitmentSummary');
 const User = require('../models/User');
 const sendEmail = require('./email');
+const { sendSMS } = require('./message');
 const DailyCommitmentSummaryTemplate = require('./EmailTemplates/DailyCommitmentSummaryTemplate');
 const { isFeatureEnabled } = require('../config/features');
 const { logSystemAction } = require('./collaboratorLogger');
@@ -26,8 +27,8 @@ const sendDailyCommitmentSummaries = async () => {
             date: today,
             emailSent: false
         })
-        .populate('userId', 'name email')
-        .populate('distributorId', 'name email businessName')
+        .populate('userId', 'name email phone')
+        .populate('distributorId', 'name email businessName phone')
         .populate({
             path: 'commitments.commitmentId',
             populate: {
@@ -76,6 +77,15 @@ const sendDailyCommitmentSummaries = async () => {
                     'Daily Platform Commitment Summary',
                     DailyCommitmentSummaryTemplate.admin(adminSummaryData)
                 );
+                
+                if (admin.phone) {
+                    try {
+                        const adminSmsMessage = `NMGA Daily Summary: ${summaries.length} commitment report${summaries.length === 1 ? '' : 's'} emailed for ${today.toLocaleDateString()}.`;
+                        await sendSMS(admin.phone, adminSmsMessage);
+                    } catch (error) {
+                        console.error('Failed to send admin daily summary SMS:', error);
+                    }
+                }
             }
         }
 
@@ -93,6 +103,15 @@ const sendDailyCommitmentSummaries = async () => {
                         summary.totalQuantity
                     )
                 );
+                
+                if (summary.userId.phone) {
+                    try {
+                        const userSmsMessage = `NMGA: You made ${summary.totalCommitments || summary.commitments.length} commitment${(summary.totalCommitments || summary.commitments.length) === 1 ? '' : 's'} totaling $${Number(summary.totalAmount || 0).toFixed(2)} today. Details in your email.`;
+                        await sendSMS(summary.userId.phone, userSmsMessage);
+                    } catch (error) {
+                        console.error('Failed to send member daily summary SMS:', error);
+                    }
+                }
             }
 
             // Send to distributor
@@ -112,6 +131,15 @@ const sendDailyCommitmentSummaries = async () => {
                         summary.totalQuantity
                     )
                 );
+                
+                if (summary.distributorId.phone) {
+                    try {
+                        const distributorSmsMessage = `NMGA: ${summary.totalCommitments} commitment${summary.totalCommitments === 1 ? '' : 's'} today totaling $${Number(summary.totalAmount || 0).toFixed(2)}. Full report emailed.`;
+                        await sendSMS(summary.distributorId.phone, distributorSmsMessage);
+                    } catch (error) {
+                        console.error('Failed to send distributor daily summary SMS:', error);
+                    }
+                }
             }
 
             // Mark summary as sent

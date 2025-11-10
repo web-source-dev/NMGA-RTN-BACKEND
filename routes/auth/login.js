@@ -4,7 +4,6 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../../models/User');
 const Announcement = require('../../models/Announcments');
-const { sendAuthMessage } = require('../../utils/message');
 const { createNotification } = require('../Common/Notification');
 const { logSystemAction } = require('../../utils/collaboratorLogger');
 
@@ -285,22 +284,6 @@ router.post('/', async (req, res) => {
         // Update user's last login timestamp
         user.lastLogin = new Date();
         await user.save();
-
-        if (user.phone) {
-            const userInfo = {
-                name: user.name,
-                time: new Date().toLocaleString(),
-                location: req.ip || 'Unknown',
-                device: req.headers['user-agent'] || 'Unknown'
-            };
-            
-            try {
-                await sendAuthMessage.login(user.phone, userInfo);
-            } catch (error) {
-                console.error('SMS sending failed:', error);
-                // Continue with login process even if SMS fails
-            }
-        }
 
         // Fetch announcements for login event
         const announcements = await Announcement.find({

@@ -1,6 +1,7 @@
 const CommitmentStatusChange = require('../models/CommitmentStatusChange');
 const User = require('../models/User');
 const sendEmail = require('./email');
+const { sendSMS } = require('./message');
 const { generateDailyCommitmentStatusSummary } = require('./EmailTemplates/DailyCommitmentStatusSummaryTemplate');
 const { isFeatureEnabled } = require('../config/features');
 const { logSystemAction, logError } = require('./collaboratorLogger');
@@ -31,7 +32,7 @@ const sendDailyCommitmentStatusSummaries = async () => {
     const statusChanges = await CommitmentStatusChange.find({
       createdAt: { $gte: todayStart, $lte: todayEnd },
       processedForEmail: false
-    }).populate('userId', 'name email businessName');
+    }).populate('userId', 'name email businessName phone');
 
     if (statusChanges.length === 0) {
       console.log('📭 No unprocessed status changes found for today.');
@@ -92,6 +93,15 @@ const sendDailyCommitmentStatusSummaries = async () => {
         
         console.log(`📧 Sending summary email to ${user.email} (${memberName})`);
         await sendEmail(user.email, subject, emailHtml);
+        
+        if (user.phone) {
+          try {
+            const smsMessage = `NMGA: ${approvedChanges.length} approved, ${declinedChanges.length} declined commitments today. Check your email for details.`;
+            await sendSMS(user.phone, smsMessage);
+          } catch (smsError) {
+            console.error(`❌ Failed to send status summary SMS to ${user.email}:`, smsError);
+          }
+        }
         
         // Mark all changes as processed
         const changeIds = changes.map(change => change._id);
