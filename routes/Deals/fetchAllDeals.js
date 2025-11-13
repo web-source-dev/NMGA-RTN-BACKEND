@@ -528,7 +528,7 @@ router.get('/buy/export', isAuthenticated, async (req, res) => {
     } catch (err) {
       return res.status(400).json({
         message: err.message,
-        success: false
+        success: false 
       });
     }
 
