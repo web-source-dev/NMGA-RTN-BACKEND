@@ -126,6 +126,8 @@ const userSchema = new mongoose.Schema({
     status: { type: String, enum: ['active', 'restricted', 'deleted','invited','accepted'], default: 'active' },
     invitationToken: String,
     invitationExpiry: Date,
+    resetPasswordToken: String,
+    resetPasswordExpires: Date,
     lastLogin: {
       type: Date,
       default: null

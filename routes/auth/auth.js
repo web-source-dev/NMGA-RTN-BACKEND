@@ -122,29 +122,78 @@ router.get('/distributor/profile', isDistributorAdmin, async (req, res) => {
 router.get('/verify-password-token/:token', async (req, res) => {
   try {
     const { token } = req.params;
+    const { type } = req.query; // Check if it's a collaborator token
     
-    const user = await User.findOne({
-      resetPasswordToken: token,
-      resetPasswordExpires: { $gt: Date.now() }
-    });
-    
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password reset token is invalid or has expired'
+    let user = null;
+    let isCollaborator = false;
+    let collaboratorData = null;
+
+    if (type === 'collaborator') {
+      // Handle collaborator token verification
+      // Find users with collaborators that have this token
+      const usersWithCollaborators = await User.find({
+        'collaborators.resetPasswordToken': token
+      });
+
+      for (const userDoc of usersWithCollaborators) {
+        const collaborator = userDoc.collaborators.find(
+          collab => collab.resetPasswordToken === token && 
+                    collab.resetPasswordExpires && 
+                    collab.resetPasswordExpires > Date.now()
+        );
+        
+        if (collaborator) {
+          isCollaborator = true;
+          collaboratorData = collaborator;
+          user = userDoc;
+          break;
+        }
+      }
+
+      if (!isCollaborator || !user) {
+        return res.status(400).json({
+          success: false,
+          message: 'Password reset token is invalid or has expired'
+        });
+      }
+      
+      // Return collaborator data (excluding sensitive information)
+      res.json({
+        success: true,
+        user: {
+          _id: collaboratorData._id,
+          name: collaboratorData.name,
+          email: collaboratorData.email,
+          businessName: user.businessName,
+          isCollaborator: true,
+          mainAccountName: user.name
+        }
+      });
+    } else {
+      // Handle main user token verification
+      user = await User.findOne({
+        resetPasswordToken: token,
+        resetPasswordExpires: { $gt: Date.now() }
+      });
+      
+      if (!user) {
+        return res.status(400).json({
+          success: false,
+          message: 'Password reset token is invalid or has expired'
+        });
+      }
+      
+      // Return user data (excluding sensitive information)
+      res.json({
+        success: true,
+        user: {
+          _id: user._id,
+          name: user.name,
+          email: user.email,
+          businessName: user.businessName
+        }
       });
     }
-    
-    // Return user data (excluding sensitive information)
-    res.json({
-      success: true,
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        businessName: user.businessName
-      }
-    });
   } catch (error) {
     console.error('Error verifying password token:', error);
     res.status(500).json({
