@@ -73,8 +73,8 @@ function generateDealMonthsTable() {
         commitmentStart = createNewMexicoDate(2025, 10, 1, 0, 0, 0, 0); // Nov 1, 2025 at 12:00 AM New Mexico time
         commitmentEnd = createNewMexicoDate(2025, 10, 10, 23, 59, 59, 999); // Nov 10, 2025 at 11:59 PM New Mexico time
       } else if (month === 'December' && year === 2025) {
-        commitmentStart = createNewMexicoDate(2025, 11, 1, 0, 0, 0, 0); // Dec 1, 2025 at 12:00 AM New Mexico time
-        commitmentEnd = createNewMexicoDate(2025, 11, 10, 23, 59, 59, 999); // Dec 10, 2025 at 11:59 PM New Mexico time
+        commitmentStart = createNewMexicoDate(2025, 11, 2, 0, 0, 0, 0); // Dec 2, 2025 at 12:00 AM New Mexico time
+        commitmentEnd = createNewMexicoDate(2025, 11, 12, 23, 59, 59, 999); // Dec 12, 2025 at 11:59 PM New Mexico time
       } else if (month === 'January' && year === 2026) {
         commitmentStart = createNewMexicoDate(2025, 11, 29, 0, 0, 0, 0); // Dec 29, 2025 at 12:00 AM New Mexico time
         commitmentEnd = createNewMexicoDate(2026, 0, 9, 23, 59, 59, 999); // Jan 9, 2026 at 11:59 PM New Mexico time

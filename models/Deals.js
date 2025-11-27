@@ -22,6 +22,10 @@ const dealSchema = new mongoose.Schema({
       type: Number,
       required: true
     },
+    bottlesPerCase: {
+      type: Number,
+      default: 1
+    },
     discountTiers: [{
       tierQuantity: {
         type: Number,

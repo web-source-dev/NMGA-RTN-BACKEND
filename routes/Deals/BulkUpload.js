@@ -76,28 +76,33 @@ router.get('/template', isDistributorAdmin, async (req, res) => {
         // Size columns - up to 5 sizes supported
         { id: 'Size 1', title: 'Size 1' },
         { id: 'Bottle Label 1', title: 'Bottle Label 1 (Optional)' },
-        { id: 'Original Cost 1', title: 'Original Cost 1' },
-        { id: 'Discount Price 1', title: 'Discount Price 1' },
+        { id: 'Original Cost 1', title: 'Original Unit/Case Cost 1' },
+        { id: 'Discount Price 1', title: 'Promo Unit/Case Cost 1' },
+        { id: 'Bottles Per Case 1', title: '# of Bottles Per Unit/Case 1' },
         { id: 'Discount Tiers 1', title: 'Discount Tiers 1 (Format: Qty1-Disc1,Qty2-Disc2)' },
         { id: 'Size 2', title: 'Size 2' },
         { id: 'Bottle Label 2', title: 'Bottle Label 2 (Optional)' },
-        { id: 'Original Cost 2', title: 'Original Cost 2' },
-        { id: 'Discount Price 2', title: 'Discount Price 2' },
+        { id: 'Original Cost 2', title: 'Original Unit/Case Cost 2' },
+        { id: 'Discount Price 2', title: 'Promo Unit/Case Cost 2' },
+        { id: 'Bottles Per Case 2', title: '# of Bottles Per Unit/Case 2' },
         { id: 'Discount Tiers 2', title: 'Discount Tiers 2 (Format: Qty1-Disc1,Qty2-Disc2)' },
         { id: 'Size 3', title: 'Size 3' },
         { id: 'Bottle Label 3', title: 'Bottle Label 3 (Optional)' },
-        { id: 'Original Cost 3', title: 'Original Cost 3' },
-        { id: 'Discount Price 3', title: 'Discount Price 3' },
+        { id: 'Original Cost 3', title: 'Original Unit/Case Cost 3' },
+        { id: 'Discount Price 3', title: 'Promo Unit/Case Cost 3' },
+        { id: 'Bottles Per Case 3', title: '# of Bottles Per Unit/Case 3' },
         { id: 'Discount Tiers 3', title: 'Discount Tiers 3 (Format: Qty1-Disc1,Qty2-Disc2)' },
         { id: 'Size 4', title: 'Size 4' },
         { id: 'Bottle Label 4', title: 'Bottle Label 4 (Optional)' },
-        { id: 'Original Cost 4', title: 'Original Cost 4' },
-        { id: 'Discount Price 4', title: 'Discount Price 4' },
+        { id: 'Original Cost 4', title: 'Original Unit/Case Cost 4' },
+        { id: 'Discount Price 4', title: 'Promo Unit/Case Cost 4' },
+        { id: 'Bottles Per Case 4', title: '# of Bottles Per Unit/Case 4' },
         { id: 'Discount Tiers 4', title: 'Discount Tiers 4 (Format: Qty1-Disc1,Qty2-Disc2)' },
         { id: 'Size 5', title: 'Size 5' },
         { id: 'Bottle Label 5', title: 'Bottle Label 5 (Optional)' },
-        { id: 'Original Cost 5', title: 'Original Cost 5' },
-        { id: 'Discount Price 5', title: 'Discount Price 5' },
+        { id: 'Original Cost 5', title: 'Original Unit/Case Cost 5' },
+        { id: 'Discount Price 5', title: 'Promo Unit/Case Cost 5' },
+        { id: 'Bottles Per Case 5', title: '# of Bottles Per Unit/Case 5' },
         { id: 'Discount Tiers 5', title: 'Discount Tiers 5 (Format: Qty1-Disc1,Qty2-Disc2)' }
     ];
 
@@ -122,26 +127,31 @@ router.get('/template', isDistributorAdmin, async (req, res) => {
             'Bottle Label 1': 'Premium Red Wine',
             'Original Cost 1': '29.99',
             'Discount Price 1': '24.99',
+            'Bottles Per Case 1': '12',
             'Discount Tiers 1': '75-23.99,100-22.99',
             'Size 2': '1.5L',
             'Bottle Label 2': 'Premium Red Wine Large',
             'Original Cost 2': '49.99',
             'Discount Price 2': '42.99',
+            'Bottles Per Case 2': '6',
             'Discount Tiers 2': '75-39.99,100-38.99',
             'Size 3': '',
             'Bottle Label 3': '',
             'Original Cost 3': '',
             'Discount Price 3': '',
+            'Bottles Per Case 3': '',
             'Discount Tiers 3': '',
             'Size 4': '',
             'Bottle Label 4': '',
             'Original Cost 4': '',
             'Discount Price 4': '',
+            'Bottles Per Case 4': '',
             'Discount Tiers 4': '',
             'Size 5': '',
             'Bottle Label 5': '',
             'Original Cost 5': '',
             'Discount Price 5': '',
+            'Bottles Per Case 5': '',
             'Discount Tiers 5': ''
         }
     ];
@@ -222,8 +232,8 @@ const DEAL_MONTHS_TABLE = (() => {
                 commitmentStart = createNewMexicoDate(2025, 10, 1, 0, 0, 0, 0); // Nov 1, 2025 at 12:00 AM New Mexico time
                 commitmentEnd = createNewMexicoDate(2025, 10, 10, 23, 59, 59, 999); // Nov 10, 2025 at 11:59 PM New Mexico time
             } else if (month === 'December' && year === 2025) {
-                commitmentStart = createNewMexicoDate(2025, 11, 1, 0, 0, 0, 0); // Dec 1, 2025 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2025, 11, 10, 23, 59, 59, 999); // Dec 10, 2025 at 11:59 PM New Mexico time
+                commitmentStart = createNewMexicoDate(2025, 11, 2, 0, 0, 0, 0); // Dec 2, 2025 at 12:00 AM New Mexico time
+                commitmentEnd = createNewMexicoDate(2025, 11, 12, 23, 59, 59, 999); // Dec 12, 2025 at 11:59 PM New Mexico time
             } else if (month === 'January' && year === 2026) {
                 commitmentStart = createNewMexicoDate(2025, 11, 29, 0, 0, 0, 0); // Dec 29, 2025 at 12:00 AM New Mexico time
                 commitmentEnd = createNewMexicoDate(2026, 0, 9, 23, 59, 59, 999); // Jan 9, 2026 at 11:59 PM New Mexico time
@@ -328,7 +338,7 @@ const validateDealRow = (row) => {
         // If any size field is filled, all must be filled
         if (size || originalCost || discountPrice) {
             if (!size || !originalCost || !discountPrice) {
-                errors.push(`Size ${i}: If you provide size information, all fields (Size, Original Cost, Discount Price) are required`);
+                errors.push(`Size ${i}: If you provide size information, all fields (Size, Original Unit/Case Cost, Promo Unit/Case Cost) are required`);
                 continue;
             }
             
@@ -339,20 +349,20 @@ const validateDealRow = (row) => {
             const discPriceNum = Number(discountPrice);
             
             if (isNaN(origCostNum)) {
-                errors.push(`Size ${i}: Original cost must be a valid number, got: "${originalCost}"`);
+                errors.push(`Size ${i}: Original Unit/Case Cost must be a valid number, got: "${originalCost}"`);
             } else if (origCostNum < 0) {
-                errors.push(`Size ${i}: Original cost cannot be negative`);
+                errors.push(`Size ${i}: Original Unit/Case Cost cannot be negative`);
             }
             
             if (isNaN(discPriceNum)) {
-                errors.push(`Size ${i}: Discount price must be a valid number, got: "${discountPrice}"`);
+                errors.push(`Size ${i}: Promo Unit/Case Cost must be a valid number, got: "${discountPrice}"`);
             } else if (discPriceNum < 0) {
-                errors.push(`Size ${i}: Discount price cannot be negative`);
+                errors.push(`Size ${i}: Promo Unit/Case Cost cannot be negative`);
             }
             
             // Validate price relationship
             if (!isNaN(origCostNum) && !isNaN(discPriceNum) && discPriceNum >= origCostNum) {
-                errors.push(`Size ${i}: Discount price (${discPriceNum}) must be less than original cost (${origCostNum})`);
+                errors.push(`Size ${i}: Promo Unit/Case Cost (${discPriceNum}) must be less than Original Unit/Case Cost (${origCostNum})`);
             }
             
             // Validate discount tiers if provided
@@ -452,7 +462,7 @@ const validateDealRow = (row) => {
     return errors;
 };
 
-// Update the CSV parsing options
+    // Update the CSV parsing options
 const csvOptions = {
     skipLines: 1,
     headers: [
@@ -465,11 +475,11 @@ const csvOptions = {
         'Single Store Deals',
         'Image URLs',
         // Size columns
-        'Size 1', 'Bottle Label 1', 'Original Cost 1', 'Discount Price 1', 'Discount Tiers 1',
-        'Size 2', 'Bottle Label 2', 'Original Cost 2', 'Discount Price 2', 'Discount Tiers 2',
-        'Size 3', 'Bottle Label 3', 'Original Cost 3', 'Discount Price 3', 'Discount Tiers 3',
-        'Size 4', 'Bottle Label 4', 'Original Cost 4', 'Discount Price 4', 'Discount Tiers 4',
-        'Size 5', 'Bottle Label 5', 'Original Cost 5', 'Discount Price 5', 'Discount Tiers 5'
+        'Size 1', 'Bottle Label 1', 'Original Cost 1', 'Discount Price 1', 'Bottles Per Case 1', 'Discount Tiers 1',
+        'Size 2', 'Bottle Label 2', 'Original Cost 2', 'Discount Price 2', 'Bottles Per Case 2', 'Discount Tiers 2',
+        'Size 3', 'Bottle Label 3', 'Original Cost 3', 'Discount Price 3', 'Bottles Per Case 3', 'Discount Tiers 3',
+        'Size 4', 'Bottle Label 4', 'Original Cost 4', 'Discount Price 4', 'Bottles Per Case 4', 'Discount Tiers 4',
+        'Size 5', 'Bottle Label 5', 'Original Cost 5', 'Discount Price 5', 'Bottles Per Case 5', 'Discount Tiers 5'
     ],
     trim: true,
     skipEmptyLines: true
@@ -534,26 +544,31 @@ router.post('/upload', isDistributorAdmin, upload.single('file'), async (req, re
                             bottleLabel1: row['Bottle Label 1'] || '',
                             originalCost1: row['Original Cost 1'] || '',
                             discountPrice1: row['Discount Price 1'] || '',
+                            bottlesPerCase1: row['Bottles Per Case 1'] || '1',
                             discountTiers1: row['Discount Tiers 1'] || '',
                             size2: row['Size 2'] || '',
                             bottleLabel2: row['Bottle Label 2'] || '',
                             originalCost2: row['Original Cost 2'] || '',
                             discountPrice2: row['Discount Price 2'] || '',
+                            bottlesPerCase2: row['Bottles Per Case 2'] || '1',
                             discountTiers2: row['Discount Tiers 2'] || '',
                             size3: row['Size 3'] || '',
                             bottleLabel3: row['Bottle Label 3'] || '',
                             originalCost3: row['Original Cost 3'] || '',
                             discountPrice3: row['Discount Price 3'] || '',
+                            bottlesPerCase3: row['Bottles Per Case 3'] || '1',
                             discountTiers3: row['Discount Tiers 3'] || '',
                             size4: row['Size 4'] || '',
                             bottleLabel4: row['Bottle Label 4'] || '',
                             originalCost4: row['Original Cost 4'] || '',
                             discountPrice4: row['Discount Price 4'] || '',
+                            bottlesPerCase4: row['Bottles Per Case 4'] || '1',
                             discountTiers4: row['Discount Tiers 4'] || '',
                             size5: row['Size 5'] || '',
                             bottleLabel5: row['Bottle Label 5'] || '',
                             originalCost5: row['Original Cost 5'] || '',
                             discountPrice5: row['Discount Price 5'] || '',
+                            bottlesPerCase5: row['Bottles Per Case 5'] || '1',
                             discountTiers5: row['Discount Tiers 5'] || ''
                         };
 
@@ -595,6 +610,7 @@ router.post('/upload', isDistributorAdmin, upload.single('file'), async (req, re
                             const bottleLabel = normalizedRow[`bottleLabel${i}`]?.trim();
                             const originalCost = normalizedRow[`originalCost${i}`]?.trim();
                             const discountPrice = normalizedRow[`discountPrice${i}`]?.trim();
+                            const bottlesPerCase = normalizedRow[`bottlesPerCase${i}`]?.trim() || '1';
                             const discountTiersStr = normalizedRow[`discountTiers${i}`]?.trim();
                             
                             if (size && originalCost && discountPrice) {
@@ -615,6 +631,7 @@ router.post('/upload', isDistributorAdmin, upload.single('file'), async (req, re
                                     name: bottleLabel || '', // Bottle label is optional
                                     originalCost: Number(originalCost),
                                     discountPrice: Number(discountPrice),
+                                    bottlesPerCase: Number(bottlesPerCase) || 1,
                                     discountTiers: discountTiers
                                 });
                             }
