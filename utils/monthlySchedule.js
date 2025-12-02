@@ -3,7 +3,11 @@
  * Uses the global monthMapping utility for scheduler and email notifications
  */
 
-const { generateDealMonthsTable: getDealMonthsTable } = require('./monthMapping');
+const { 
+  generateDealMonthsTable: getDealMonthsTable,
+  getNextMonth,
+  MONTHS
+} = require('./monthMapping');
 
 /**
  * Generate the monthly deal schedule table
@@ -15,16 +19,10 @@ function generateDealMonthsTable() {
 
 /**
  * Get the next month name for display (delivery month)
+ * Uses the global monthMapping utility
  */
 function getNextMonthName(monthName, year) {
-  const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-  const currentIndex = months.indexOf(monthName);
-  const nextIndex = (currentIndex + 1) % 12;
-  const nextYear = currentIndex === 11 ? year + 1 : year; // If December, next year
-  return { month: months[nextIndex], year: nextYear };
+  return getNextMonth(monthName, year);
 }
 
 /**
@@ -35,12 +33,7 @@ function getCurrentMonthSchedule() {
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
   
-  const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-  
-  const monthName = months[currentMonth];
+  const monthName = MONTHS[currentMonth];
   const table = generateDealMonthsTable();
   
   return table.find(row => row.month === monthName && row.year === currentYear);
@@ -54,11 +47,6 @@ function getNextMonthSchedule() {
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
   
-  const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-  
   let nextMonth = currentMonth + 1;
   let nextYear = currentYear;
   
@@ -67,7 +55,7 @@ function getNextMonthSchedule() {
     nextYear = currentYear + 1;
   }
   
-  const monthName = months[nextMonth];
+  const monthName = MONTHS[nextMonth];
   const table = generateDealMonthsTable();
   
   return table.find(row => row.month === monthName && row.year === nextYear);

@@ -264,15 +264,28 @@ const checkCommitmentWindowClosingReminders = async () => {
         }
 
         // Check if member has any commitments for this month's deals
+        // Find deals where commitment period overlaps with the current month's commitment period
+        const commitmentStart = new Date(currentMonth.commitmentStart + 'T00:00:00');
+        const commitmentEnd = new Date(currentMonth.commitmentEnd + 'T23:59:59');
+        
         const currentMonthDeals = await Deal.find({
-          commitmentStartAt: {
-            $gte: new Date(currentMonth.commitmentStart),
-            $lt: new Date(new Date(currentMonth.commitmentStart).getTime() + 24 * 60 * 60 * 1000)
-          },
-          commitmentEndsAt: {
-            $gte: new Date(currentMonth.commitmentEnd),
-            $lt: new Date(new Date(currentMonth.commitmentEnd).getTime() + 24 * 60 * 60 * 1000)
-          }
+          $or: [
+            // Deals where commitment period overlaps with current month's commitment period
+            {
+              $and: [
+                { commitmentStartAt: { $lte: commitmentEnd } },
+                { commitmentEndsAt: { $gte: commitmentStart } }
+              ]
+            },
+            // Also include deals that don't have commitment dates but have deal dates in this range
+            {
+              $and: [
+                { commitmentStartAt: { $exists: false } },
+                { dealStartAt: { $lte: commitmentEnd } },
+                { dealEndsAt: { $gte: commitmentStart } }
+              ]
+            }
+          ]
         }).distinct('_id');
 
         const memberCommitments = await Commitment.find({
