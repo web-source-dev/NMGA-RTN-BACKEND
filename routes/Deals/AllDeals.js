@@ -11,6 +11,7 @@ const { broadcastDealUpdate, broadcastSingleDealUpdate } = require('../../utils/
 const { isDistributorAdmin,isAdmin, getCurrentUserContext } = require('../../middleware/auth');
 const { format } = require('date-fns');
 const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
+const { getCommitmentDates, MONTHS } = require('../../utils/monthMapping');
 
 // Helper function to store commitment status changes for daily summary
 const storeCommitmentStatusChange = async (commitment, deal, newStatus, distributorResponse, processedBy, processedById) => {
@@ -117,12 +118,49 @@ router.get('/distributor-deals', isDistributorAdmin, async (req, res) => {
         let dateQuery = {};
 
         if (month && month !== '') {
-            // If month is specified, filter by that month
-            const currentYear = new Date().getFullYear();
-            const monthIndex = parseInt(month) - 2; // Convert to 0-based index
-            const startOfMonth = new Date(currentYear, monthIndex, 5, 0, 0, 0);
-            const endOfMonth = new Date(currentYear, monthIndex, 25, 23, 59, 59);
-            dateQuery = buildDateOverlapQuery(startOfMonth, endOfMonth);
+            // If month is specified, filter by that month's commitment period
+            // Frontend sends the actual month value (1-12) which is the previous month of what user sees
+            // Also check for year parameter if provided
+            const monthIndex = parseInt(month) - 1; // Convert to 0-based index (1-12 -> 0-11)
+            const monthName = MONTHS[monthIndex];
+            
+            // Get year from query or determine based on current date
+            let filterYear = req.query.year ? parseInt(req.query.year) : null;
+            if (!filterYear) {
+                const currentDate = new Date();
+                const currentYear = currentDate.getFullYear();
+                const currentMonth = currentDate.getMonth(); // 0-11
+                // Determine the year: if month is in the past for current year, use next year
+                filterYear = currentYear;
+                if (monthIndex < currentMonth) {
+                    filterYear = currentYear + 1;
+                }
+            }
+            
+            // Get commitment dates for this month and year
+            const commitmentDates = getCommitmentDates(monthName, filterYear);
+            const commitmentStart = new Date(commitmentDates.commitmentStart + 'T00:00:00');
+            const commitmentEnd = new Date(commitmentDates.commitmentEnd + 'T23:59:59');
+            
+            // Filter deals where commitment period overlaps with the selected month's commitment period
+            dateQuery = {
+                $or: [
+                    {
+                        $and: [
+                            { commitmentStartAt: { $lte: commitmentEnd } },
+                            { commitmentEndsAt: { $gte: commitmentStart } }
+                        ]
+                    },
+                    // Also include deals that don't have commitment dates but have deal dates in this range
+                    {
+                        $and: [
+                            { commitmentStartAt: { $exists: false } },
+                            { dealStartAt: { $lte: commitmentEnd } },
+                            { dealEndsAt: { $gte: commitmentStart } }
+                        ]
+                    }
+                ]
+            };
         } else if (startDate && endDate) {
             // If date range is specified
             const startDateObj = new Date(startDate);
@@ -302,12 +340,49 @@ router.get('/admin-all-deals', isAdmin, async (req, res) => {
         let dateQuery = {};
 
         if (month && month !== '') {
-            // If month is specified, filter by that month
-            const currentYear = new Date().getFullYear();
-            const monthIndex = parseInt(month) - 2; // Convert to 0-based index
-            const startOfMonth = new Date(currentYear, monthIndex, 5, 0, 0, 0);
-            const endOfMonth = new Date(currentYear, monthIndex, 25, 23, 59, 59);
-            dateQuery = buildDateOverlapQuery(startOfMonth, endOfMonth);
+            // If month is specified, filter by that month's commitment period
+            // Frontend sends the actual month value (1-12) which is the previous month of what user sees
+            // Also check for year parameter if provided
+            const monthIndex = parseInt(month) - 1; // Convert to 0-based index (1-12 -> 0-11)
+            const monthName = MONTHS[monthIndex];
+            
+            // Get year from query or determine based on current date
+            let filterYear = req.query.year ? parseInt(req.query.year) : null;
+            if (!filterYear) {
+                const currentDate = new Date();
+                const currentYear = currentDate.getFullYear();
+                const currentMonth = currentDate.getMonth(); // 0-11
+                // Determine the year: if month is in the past for current year, use next year
+                filterYear = currentYear;
+                if (monthIndex < currentMonth) {
+                    filterYear = currentYear + 1;
+                }
+            }
+            
+            // Get commitment dates for this month and year
+            const commitmentDates = getCommitmentDates(monthName, filterYear);
+            const commitmentStart = new Date(commitmentDates.commitmentStart + 'T00:00:00');
+            const commitmentEnd = new Date(commitmentDates.commitmentEnd + 'T23:59:59');
+            
+            // Filter deals where commitment period overlaps with the selected month's commitment period
+            dateQuery = {
+                $or: [
+                    {
+                        $and: [
+                            { commitmentStartAt: { $lte: commitmentEnd } },
+                            { commitmentEndsAt: { $gte: commitmentStart } }
+                        ]
+                    },
+                    // Also include deals that don't have commitment dates but have deal dates in this range
+                    {
+                        $and: [
+                            { commitmentStartAt: { $exists: false } },
+                            { dealStartAt: { $lte: commitmentEnd } },
+                            { dealEndsAt: { $gte: commitmentStart } }
+                        ]
+                    }
+                ]
+            };
         } else if (startDate && endDate) {
             // If date range is specified
             const startDateObj = new Date(startDate);

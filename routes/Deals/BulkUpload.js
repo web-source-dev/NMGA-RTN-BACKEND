@@ -8,6 +8,7 @@ const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const User = require('../../models/User');
 const { isDistributorAdmin, getCurrentUserContext } = require('../../middleware/auth');
 const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
+const { getCommitmentDates, getDealTimeframe, getDeadline, MONTHS } = require('../../utils/monthMapping');
 
 // Configure multer for file upload with error handling
 const storage = multer.diskStorage({
@@ -172,147 +173,34 @@ router.get('/template', isDistributorAdmin, async (req, res) => {
         });
 });
 
-// --- Utility: Month/Year to Deal/Commitment Dates (New Mexico timezone) ---
-const DEAL_MONTHS_TABLE = (() => {
-    // Get current date in New Mexico timezone (Mountain Time)
-    const newMexicoTime = new Date().toLocaleString("en-US", {timeZone: "America/Denver"});
-    const currentDate = new Date(newMexicoTime);
-    const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth(); // 0-11
-    
-    const months = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    
-    const table = [];
-    
-    // Helper function to create New Mexico timezone dates
-    const createNewMexicoDate = (year, month, day, hour = 0, minute = 0, second = 0, millisecond = 0) => {
-        // Create the date in local timezone first
-        const date = new Date(year, month, day, hour, minute, second, millisecond);
-        return date;
-    };
-    
-    // Generate for current year and next year
-    for (let year = currentYear; year <= currentYear + 2; year++) {
-        months.forEach((month, monthIndex) => {
-            // Skip past months in current year (but allow current month and future months)
-            if (year === currentYear && monthIndex < currentMonth) {
-                return;
-            }
-            
-            // Calculate deadline (3 days before the month starts) - New Mexico time
-            const monthStart = createNewMexicoDate(year, monthIndex, 1);
-            const deadline = new Date(monthStart);
-            deadline.setDate(deadline.getDate() - 3); // 3 days before month starts
-            
-            // Deal timeframe is the complete month (1st to last day) - New Mexico time
-            const timeframeStart = createNewMexicoDate(year, monthIndex, 1, 0, 0, 0, 0); // 1st day at 12:00 AM New Mexico time
-            // Get the last day of the current month
-            const lastDayOfMonth = new Date(year, monthIndex + 1, 0).getDate();
-            const timeframeEnd = createNewMexicoDate(year, monthIndex, lastDayOfMonth, 23, 59, 59, 999); // Last day at 11:59 PM New Mexico time
-            
-            // Commitment timeframe based on the provided table - New Mexico time
-            let commitmentStart, commitmentEnd;
-            
-            if (month === 'July' && year === 2025) {
-                commitmentStart = createNewMexicoDate(2025, 5, 29, 0, 0, 0, 0); // Jun 29, 2025 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2025, 6, 10, 23, 59, 59, 999); // Jul 10, 2025 at 11:59 PM New Mexico time
-            } else if (month === 'August' && year === 2025) {
-                commitmentStart = createNewMexicoDate(2025, 7, 1, 0, 0, 0, 0); // Aug 1, 2025 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2025, 7, 12, 23, 59, 59, 999); // Aug 12, 2025 at 11:59 PM New Mexico time
-            } else if (month === 'September' && year === 2025) {
-                commitmentStart = createNewMexicoDate(2025, 8, 1, 0, 0, 0, 0); // Sep 1, 2025 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2025, 8, 10, 23, 59, 59, 999); // Sep 10, 2025 at 11:59 PM New Mexico time
-            } else if (month === 'October' && year === 2025) {
-                commitmentStart = createNewMexicoDate(2025, 9, 1, 0, 0, 0, 0); // Oct 1, 2025 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2025, 9, 11, 23, 59, 59, 999); // Oct 11, 2025 at 11:59 PM New Mexico time
-            } else if (month === 'November' && year === 2025) {
-                commitmentStart = createNewMexicoDate(2025, 10, 1, 0, 0, 0, 0); // Nov 1, 2025 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2025, 10, 10, 23, 59, 59, 999); // Nov 10, 2025 at 11:59 PM New Mexico time
-            } else if (month === 'December' && year === 2025) {
-                commitmentStart = createNewMexicoDate(2025, 11, 2, 0, 0, 0, 0); // Dec 2, 2025 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2025, 11, 12, 23, 59, 59, 999); // Dec 12, 2025 at 11:59 PM New Mexico time
-            } else if (month === 'January' && year === 2026) {
-                commitmentStart = createNewMexicoDate(2025, 11, 29, 0, 0, 0, 0); // Dec 29, 2025 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2026, 0, 9, 23, 59, 59, 999); // Jan 9, 2026 at 11:59 PM New Mexico time
-            } else if (month === 'February' && year === 2026) {
-                commitmentStart = createNewMexicoDate(2026, 1, 2, 0, 0, 0, 0); // Feb 2, 2026 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2026, 1, 12, 23, 59, 59, 999); // Feb 12, 2026 at 11:59 PM New Mexico time
-            } else if (month === 'March' && year === 2026) {
-                commitmentStart = createNewMexicoDate(2026, 2, 2, 0, 0, 0, 0); // Mar 2, 2026 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2026, 2, 12, 23, 59, 59, 999); // Mar 12, 2026 at 11:59 PM New Mexico time
-            } else if (month === 'April' && year === 2026) {
-                commitmentStart = createNewMexicoDate(2026, 3, 1, 0, 0, 0, 0); // Apr 1, 2026 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2026, 3, 10, 23, 59, 59, 999); // Apr 10, 2026 at 11:59 PM New Mexico time
-            } else if (month === 'May' && year === 2026) {
-                commitmentStart = createNewMexicoDate(2026, 3, 30, 0, 0, 0, 0); // Apr 30, 2026 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2026, 4, 11, 23, 59, 59, 999); // May 11, 2026 at 11:59 PM New Mexico time
-            } else if (month === 'June' && year === 2026) {
-                commitmentStart = createNewMexicoDate(2026, 5, 1, 0, 0, 0, 0); // Jun 1, 2026 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2026, 5, 11, 23, 59, 59, 999); // Jun 11, 2026 at 11:59 PM New Mexico time
-            } else if (month === 'July' && year === 2026) {
-                commitmentStart = createNewMexicoDate(2026, 5, 29, 0, 0, 0, 0); // Jun 29, 2026 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2026, 6, 10, 23, 59, 59, 999); // Jul 10, 2026 at 11:59 PM New Mexico time
-            } else if (month === 'August' && year === 2026) {
-                commitmentStart = createNewMexicoDate(2026, 7, 1, 0, 0, 0, 0); // Aug 1, 2026 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2026, 7, 12, 23, 59, 59, 999); // Aug 12, 2026 at 11:59 PM New Mexico time
-            } else if (month === 'September' && year === 2026) {
-                commitmentStart = createNewMexicoDate(2026, 8, 1, 0, 0, 0, 0); // Sep 1, 2026 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2026, 8, 10, 23, 59, 59, 999); // Sep 10, 2026 at 11:59 PM New Mexico time
-            } else if (month === 'October' && year === 2026) {
-                commitmentStart = createNewMexicoDate(2026, 9, 1, 0, 0, 0, 0); // Oct 1, 2026 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2026, 9, 11, 23, 59, 59, 999); // Oct 11, 2026 at 11:59 PM New Mexico time
-            } else if (month === 'November' && year === 2026) {
-                commitmentStart = createNewMexicoDate(2026, 10, 1, 0, 0, 0, 0); // Nov 1, 2026 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2026, 10, 10, 23, 59, 59, 999); // Nov 10, 2026 at 11:59 PM New Mexico time
-            } else if (month === 'December' && year === 2026) {
-                commitmentStart = createNewMexicoDate(2026, 11, 1, 0, 0, 0, 0); // Dec 1, 2026 at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(2026, 11, 10, 23, 59, 59, 999); // Dec 10, 2026 at 11:59 PM New Mexico time
-            } else {
-                // Default: commitment period is first 10 days of the month
-                commitmentStart = createNewMexicoDate(year, monthIndex, 1, 0, 0, 0, 0); // 1st day at 12:00 AM New Mexico time
-                commitmentEnd = createNewMexicoDate(year, monthIndex, 10, 23, 59, 59, 999); // 10th day at 11:59 PM New Mexico time
-            }
-            
-            table.push({
-                month,
-                year,
-                deadline: deadline,
-                timeframeStart: timeframeStart,
-                timeframeEnd: timeframeEnd,
-                commitmentStart: commitmentStart,
-                commitmentEnd: commitmentEnd
-            });
-        });
-    }
-    
-    return table;
-})();
-
-function getDealMonthRow(month, year) {
-    return DEAL_MONTHS_TABLE.find(row =>
-        row.month.toLowerCase() === month.toLowerCase() && Number(row.year) === Number(year)
-    );
-}
-
 // Helper function to get month index from month name
 function getMonthIndex(monthName) {
-    const months = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    return months.indexOf(monthName);
+    return MONTHS.indexOf(monthName);
 }
 
 // Helper function to get month name from month index
 function getMonthName(monthIndex) {
-    const months = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    return months[monthIndex];
+    return MONTHS[monthIndex];
+}
+
+// Helper function to get deal month row data using global utility
+function getDealMonthRow(month, year) {
+    const monthIndex = getMonthIndex(month);
+    if (monthIndex === -1) return null;
+    
+    const commitmentDates = getCommitmentDates(month, year);
+    const dealTimeframe = getDealTimeframe(month, year);
+    const deadline = getDeadline(month, year);
+    
+    return {
+        month,
+        year,
+        deadline: new Date(deadline),
+        timeframeStart: new Date(dealTimeframe.timeframeStart + 'T00:00:00'),
+        timeframeEnd: new Date(dealTimeframe.timeframeEnd + 'T23:59:59'),
+        commitmentStart: new Date(commitmentDates.commitmentStart + 'T00:00:00'),
+        commitmentEnd: new Date(commitmentDates.commitmentEnd + 'T23:59:59')
+    };
 }
 
 // Add this validation function for new CSV format
@@ -574,29 +462,34 @@ router.post('/upload', isDistributorAdmin, upload.single('file'), async (req, re
 
                         // Validate the normalized row
                         const rowErrors = validateDealRow(normalizedRow);
-                        // Calculate dates from month/year - create deal for the month BEFORE the specified month
-                        const targetMonthRow = getDealMonthRow(normalizedRow.dealMonth, normalizedRow.dealYear);
-                        if (!targetMonthRow) {
-                            rowErrors.push(`Invalid Deal Month/Year: ${normalizedRow.dealMonth} ${normalizedRow.dealYear}`);
-                        }
+                        // Calculate dates from month/year - the CSV specifies the delivery month
+                        // but we need to create the deal for the actual month (previous month)
+                        const deliveryMonth = normalizedRow.dealMonth.trim();
+                        const deliveryYear = parseInt(normalizedRow.dealYear);
                         
-                        // Get the actual month row for the previous month (delivery month)
-                        let monthRow;
-                        if (targetMonthRow) {
-                            // Find the previous month row
-                            const monthIndex = getMonthIndex(targetMonthRow.month);
-                            const year = parseInt(targetMonthRow.year);
-                            let prevMonthIndex = monthIndex - 1;
-                            let prevYear = year;
+                        // Get the previous month (actual deal month)
+                        const monthIndex = getMonthIndex(deliveryMonth);
+                        if (monthIndex === -1) {
+                            rowErrors.push(`Invalid Deal Month: ${deliveryMonth}`);
+                        } else {
+                            let actualMonthIndex = monthIndex - 1;
+                            let actualYear = deliveryYear;
                             
                             // Handle year rollover
-                            if (prevMonthIndex < 0) {
-                                prevMonthIndex = 11; // December
-                                prevYear = year - 1;
+                            if (actualMonthIndex < 0) {
+                                actualMonthIndex = 11; // December
+                                actualYear = deliveryYear - 1;
                             }
                             
-                            const prevMonthName = getMonthName(prevMonthIndex);
-                            monthRow = getDealMonthRow(prevMonthName, prevYear.toString());
+                            const actualMonthName = getMonthName(actualMonthIndex);
+                            const monthRow = getDealMonthRow(actualMonthName, actualYear);
+                            
+                            if (!monthRow) {
+                                rowErrors.push(`Invalid Deal Month/Year: ${deliveryMonth} ${deliveryYear}`);
+                            } else {
+                                // Store monthRow for use below
+                                normalizedRow._monthRow = monthRow;
+                            }
                         }
                         if (rowErrors.length > 0) {
                             errors.push(`Row ${rowNumber}: ${rowErrors.join('; ')}`);
@@ -637,16 +530,22 @@ router.post('/upload', isDistributorAdmin, upload.single('file'), async (req, re
                             }
                         }
 
-                        // Use calculated dates
+                        // Use calculated dates from the monthRow stored in normalizedRow
+                        const monthRow = normalizedRow._monthRow;
+                        if (!monthRow) {
+                            rowErrors.push(`Could not calculate dates for month: ${normalizedRow.dealMonth} ${normalizedRow.dealYear}`);
+                            return;
+                        }
+                        
                         deals.push({
                             name: normalizedRow.name.trim(),
                             description: normalizedRow.description.trim(),
                             sizes: sizes,
                             category: normalizedRow.category.trim(),
-                            dealEndsAt: monthRow ? monthRow.timeframeEnd : null,
-                            dealStartAt: monthRow ? monthRow.timeframeStart : null,
-                            commitmentStartAt: monthRow ? monthRow.commitmentStart : null,
-                            commitmentEndsAt: monthRow ? monthRow.commitmentEnd : null,
+                            dealEndsAt: monthRow.timeframeEnd,
+                            dealStartAt: monthRow.timeframeStart,
+                            commitmentStartAt: monthRow.commitmentStart,
+                            commitmentEndsAt: monthRow.commitmentEnd,
                             singleStoreDeals: normalizedRow.singleStoreDeals.trim(),
                             minQtyForDiscount: Number(normalizedRow.minQtyForDiscount.toString().trim()),
                             images: normalizedRow.images ? 

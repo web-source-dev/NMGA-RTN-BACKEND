@@ -5,6 +5,7 @@ const Deal = require('../../models/Deals');
 const User = require('../../models/User');
 const { isDistributorAdmin, getCurrentUserContext } = require('../../middleware/auth');
 const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
+const { getCommitmentDates, MONTHS } = require('../../utils/monthMapping');
 
 router.get('/', isDistributorAdmin, async (req, res) => {
   try {
@@ -18,7 +19,8 @@ router.get('/', isDistributorAdmin, async (req, res) => {
       maxPrice, 
       search, 
       sortBy, 
-      month 
+      month,
+      year 
     } = req.query;
     
     // Set up query filter
@@ -34,31 +36,53 @@ router.get('/', isDistributorAdmin, async (req, res) => {
       filter.status = status;
     }
     
-    // Handle month filtering
+    // Handle month filtering - frontend sends month (1-12) and year
     let currentMonth = null;
     if (month && month !== '') {
-      // If month is provided, filter by that specific month
-      const now = new Date();
-      const filterMonth = parseInt(month) - 1; // Months are 0-indexed in JS
-      const filterYear = now.getFullYear();
+      // Frontend sends the actual month (1-12) which is the previous month of what user sees
+      const currentDate = new Date();
+      const currentYear = currentDate.getFullYear();
+      const currentMonthIndex = currentDate.getMonth(); // 0-11
+      const monthIndex = parseInt(month) - 1; // Convert to 0-based index (1-12 -> 0-11)
+      const monthName = MONTHS[monthIndex];
       
-      // Create start and end date for the selected month
-      const startDate = new Date(filterYear, filterMonth, 1);
-      const endDate = new Date(filterYear, filterMonth + 1, 0, 23, 59, 59, 999);
+      // Determine the year: use the year from query params, or if month is in the past for current year, use next year
+      let filterYear = currentYear;
+      if (year && year !== '') {
+        const parsedYear = parseInt(year);
+        if (!isNaN(parsedYear)) {
+          filterYear = parsedYear;
+        }
+      } else if (monthIndex < currentMonthIndex) {
+        // If month is in the past for current year, use next year
+        filterYear = currentYear + 1;
+      }
       
-      // Filter deals that are active during the selected month (overlap with the month)
+      // Get commitment dates for this month and year
+      const commitmentDates = getCommitmentDates(monthName, filterYear);
+      const commitmentStart = new Date(commitmentDates.commitmentStart + 'T00:00:00');
+      const commitmentEnd = new Date(commitmentDates.commitmentEnd + 'T23:59:59');
+      
+      // Filter deals where commitment period overlaps with the selected month's commitment period
       filter.$or = [
-        { 
-          dealStartAt: { $lte: endDate },
-          dealEndsAt: { $gte: startDate }
+        {
+          $and: [
+            { commitmentStartAt: { $lte: commitmentEnd } },
+            { commitmentEndsAt: { $gte: commitmentStart } }
+          ]
         },
-        // Include deals without specific dates
-        { dealStartAt: { $exists: false } },
-        { dealEndsAt: { $exists: false } }
+        // Also include deals that don't have commitment dates but have deal dates in this range
+        {
+          $and: [
+            { commitmentStartAt: { $exists: false } },
+            { dealStartAt: { $lte: commitmentEnd } },
+            { dealEndsAt: { $gte: commitmentStart } }
+          ]
+        }
       ];
       
       // Set currentMonth for response
-      currentMonth = filterMonth + 1; // Convert back to 1-indexed for frontend
+      currentMonth = monthIndex + 1; // Convert back to 1-indexed for frontend
     }
     // If no month is provided (All Months selected), don't add any date filtering
     

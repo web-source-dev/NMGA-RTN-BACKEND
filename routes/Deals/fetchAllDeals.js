@@ -5,6 +5,7 @@ const { isAuthenticated, isAdmin, getCurrentUserContext } = require('../../middl
 const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 const { convertArrayToCSV } = require('convert-array-to-csv');
 const PDFDocument = require('pdfkit');
+const { getCommitmentDates, MONTHS } = require('../../utils/monthMapping');
 
 const formatDate = (date) => {
   if (!date) return 'N/A';
@@ -308,7 +309,53 @@ const generateDealsPdf = (deals, monthLabel) => new Promise((resolve, reject) =>
 
 router.get('/',isAdmin, async (req, res) => {
   try {
+    const { month, year } = req.query;
+    
+    // Build date filter if month/year are provided
+    let dateMatch = {};
+    if (month && month !== '') {
+      // Frontend sends the actual month (1-12) which is the previous month of what user sees
+      const currentDate = new Date();
+      const currentYear = currentDate.getFullYear();
+      const currentMonthIndex = currentDate.getMonth(); // 0-11
+      const monthIndex = parseInt(month) - 1; // Convert to 0-based index (1-12 -> 0-11)
+      const monthName = MONTHS[monthIndex];
+      
+      // Determine the year: use the year from query params, or if month is in the past for current year, use next year
+      let filterYear = parseInt(year) || currentYear;
+      if (!year && monthIndex < currentMonthIndex) {
+        filterYear = currentYear + 1;
+      }
+      
+      // Get commitment dates for this month and year
+      const commitmentDates = getCommitmentDates(monthName, filterYear);
+      const commitmentStart = new Date(commitmentDates.commitmentStart + 'T00:00:00');
+      const commitmentEnd = new Date(commitmentDates.commitmentEnd + 'T23:59:59');
+      
+      // Filter deals where commitment period overlaps with the selected month's commitment period
+      dateMatch = {
+        $or: [
+          {
+            $and: [
+              { commitmentStartAt: { $lte: commitmentEnd } },
+              { commitmentEndsAt: { $gte: commitmentStart } }
+            ]
+          },
+          // Also include deals that don't have commitment dates but have deal dates in this range
+          {
+            $and: [
+              { commitmentStartAt: { $exists: false } },
+              { dealStartAt: { $lte: commitmentEnd } },
+              { dealEndsAt: { $gte: commitmentStart } }
+            ]
+          }
+        ]
+      };
+    }
+    
     const deals = await Deal.aggregate([
+      // Add date filter if month/year provided
+      ...(Object.keys(dateMatch).length > 0 ? [{ $match: dateMatch }] : []),
      
       {
         $lookup: {
