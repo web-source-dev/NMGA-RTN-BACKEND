@@ -131,13 +131,16 @@ const getCommitmentDates = (monthName, year) => {
 };
 
 /**
- * Get deal timeframe (start and end of the month)
+ * Get deal timeframe (start when commitments start, end when next month commitments start)
  */
 const getDealTimeframe = (monthName, year) => {
-  const monthIndex = getMonthIndex(monthName);
-  const timeframeStart = createNewMexicoDate(year, monthIndex, 1, 0, 0, 0, 0);
-  const lastDayOfMonth = new Date(year, monthIndex + 1, 0).getDate();
-  const timeframeEnd = createNewMexicoDate(year, monthIndex, lastDayOfMonth, 23, 59, 59, 999);
+  const commitmentDates = getCommitmentDates(monthName, year);
+  const timeframeStart = commitmentDates.commitmentStartDate;
+
+  // Get next month's commitment start date as the end date
+  const nextMonth = getNextMonth(monthName, year);
+  const nextMonthCommitmentDates = getCommitmentDates(nextMonth.month, nextMonth.year);
+  const timeframeEnd = nextMonthCommitmentDates.commitmentStartDate;
 
   return {
     timeframeStart: formatDate(timeframeStart),
