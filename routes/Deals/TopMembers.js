@@ -6,7 +6,7 @@ const Deal = require('../../models/Deals');
 const { isAdmin, getCurrentUserContext } = require('../../middleware/auth');
 const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
 
-// Get all members (admin only)
+// Get all members with commitment details (admin only)
 router.get('/all-members/:userRole', isAdmin, async (req, res) => {
   try {
     const { currentUser, originalUser, isImpersonating } = getCurrentUserContext(req);
@@ -17,25 +17,108 @@ router.get('/all-members/:userRole', isAdmin, async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Admin privileges required.' });
     }
 
+    // Get query parameters
+    const { month, year, commitmentFilter } = req.query;
+
+    // Get all members
     const members = await User.find({ role: 'member' })
       .select('name email businessName contactPerson phone address logo')
       .lean();
 
-    await logCollaboratorAction(req, 'view_all_members', 'members', { 
-      totalMembers: members.length,
-      additionalInfo: 'Admin viewed all members list'
+    // Get commitments with deal details for all members
+    const commitments = await Commitment.find({
+      userId: { $in: members.map(m => m._id) }
+    })
+    .populate({
+      path: 'dealId',
+      select: 'name description images category status dealStartAt dealEndsAt commitmentStartAt commitmentEndsAt'
+    })
+    .select('userId dealId totalPrice status sizeCommitments createdAt')
+    .sort({ createdAt: -1 })
+    .lean();
+
+    // Group commitments by member
+    const commitmentsByMember = {};
+    commitments.forEach(commitment => {
+      const memberId = commitment.userId.toString();
+      if (!commitmentsByMember[memberId]) {
+        commitmentsByMember[memberId] = [];
+      }
+      commitmentsByMember[memberId].push(commitment);
     });
 
-    return res.status(200).json({ members });
+    // Process members with commitment data
+    const membersWithCommitments = members.map(member => {
+      const memberCommitments = commitmentsByMember[member._id.toString()] || [];
+
+      // Filter by month/year if provided
+      let filteredCommitments = memberCommitments;
+      if (month && year) {
+        const monthNum = parseInt(month);
+        const yearNum = parseInt(year);
+        filteredCommitments = memberCommitments.filter(commitment => {
+          const commitDate = new Date(commitment.createdAt);
+          return commitDate.getMonth() + 1 === monthNum && commitDate.getFullYear() === yearNum;
+        });
+      }
+
+      // Calculate statistics
+      const totalCommitments = filteredCommitments.length;
+      const totalSpent = filteredCommitments.reduce((sum, c) => sum + (c.totalPrice || 0), 0);
+      const approvedCommitments = filteredCommitments.filter(c => c.status === 'approved').length;
+      const pendingCommitments = filteredCommitments.filter(c => c.status === 'pending').length;
+
+      // Get unique deals
+      const uniqueDeals = [...new Set(filteredCommitments.map(c => c.dealId?._id?.toString()).filter(Boolean))];
+
+      return {
+        ...member,
+        commitments: filteredCommitments,
+        stats: {
+          totalCommitments,
+          totalSpent,
+          approvedCommitments,
+          pendingCommitments,
+          uniqueDeals: uniqueDeals.length,
+          hasCommitments: totalCommitments > 0
+        }
+      };
+    });
+
+    // Apply commitment filter
+    let filteredMembers = membersWithCommitments;
+    if (commitmentFilter === 'with_commitments') {
+      filteredMembers = membersWithCommitments.filter(m => m.stats.hasCommitments);
+    } else if (commitmentFilter === 'without_commitments') {
+      filteredMembers = membersWithCommitments.filter(m => !m.stats.hasCommitments);
+    }
+
+    await logCollaboratorAction(req, 'view_all_members', 'members', {
+      totalMembers: filteredMembers.length,
+      totalUnfiltered: membersWithCommitments.length,
+      filters: { month, year, commitmentFilter },
+      additionalInfo: 'Admin viewed all members list with commitment details'
+    });
+
+    return res.status(200).json({
+      members: filteredMembers,
+      summary: {
+        totalMembers: filteredMembers.length,
+        membersWithCommitments: membersWithCommitments.filter(m => m.stats.hasCommitments).length,
+        membersWithoutCommitments: membersWithCommitments.filter(m => !m.stats.hasCommitments).length,
+        totalCommitments: membersWithCommitments.reduce((sum, m) => sum + m.stats.totalCommitments, 0),
+        totalSpent: membersWithCommitments.reduce((sum, m) => sum + m.stats.totalSpent, 0)
+      }
+    });
   } catch (error) {
     console.error('Error fetching members:', error);
-    
+
     // Log the error
     await logError(req, 'view_all_members', 'members', error);
-    
-    return res.status(500).json({ 
+
+    return res.status(500).json({
       success: false,
-      message: 'Server error' 
+      message: 'Server error'
     });
   }
 });
