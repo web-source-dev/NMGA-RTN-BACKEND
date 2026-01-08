@@ -135,39 +135,58 @@ router.get('/member-details/:memberId/:userRole', isAdmin, async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Admin privileges required.' });
     }
 
+    // Get query parameters for filtering
+    const { month, year } = req.query;
+
     // Get member details
     const member = await User.findById(memberId)
       .select('name email businessName contactPerson phone address logo')
       .lean();
 
     if (!member) {
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: 'Member not found' 
+        message: 'Member not found'
       });
     }
 
+    // Build commitment query with optional month/year filter
+    const commitmentQuery = { userId: memberId };
+    if (month && year) {
+      const monthNum = parseInt(month);
+      const yearNum = parseInt(year);
+      const startDate = new Date(yearNum, monthNum - 1, 1); // Month is 0-indexed in JS Date
+      const endDate = new Date(yearNum, monthNum, 1); // Next month
+
+      commitmentQuery.createdAt = {
+        $gte: startDate,
+        $lt: endDate
+      };
+    }
+
     // Get member's commitments with deal details
-    const commitments = await Commitment.find({ userId: memberId })
+    const commitments = await Commitment.find(commitmentQuery)
       .populate({
         path: 'dealId',
         select: 'name description discountPrice originalCost images'
       })
+      .select('userId dealId totalPrice status sizeCommitments createdAt')
       .sort({ createdAt: -1 })
       .lean();
 
-    // Calculate total spent and total commitments
-    const totalSpent = commitments.reduce((sum, commitment) => 
+    // Calculate total spent and total commitments from filtered commitments
+    const totalSpent = commitments.reduce((sum, commitment) =>
       sum + (commitment.totalPrice || 0), 0);
-    
-    // Log the action
-    await logCollaboratorAction(req, 'view_member_details_admin', 'member', { 
+
+    // Log the action with filter information
+    await logCollaboratorAction(req, 'view_member_details_admin', 'member', {
       memberId: memberId,
       memberName: member.name,
       memberEmail: member.email,
       totalCommitments: commitments.length,
       totalSpent: totalSpent,
-      additionalInfo: 'Admin viewed detailed member information'
+      filters: { month, year },
+      additionalInfo: 'Admin viewed detailed member information with optional filters'
     });
 
     return res.status(200).json({
