@@ -77,33 +77,33 @@ router.get('/template', isDistributorAdmin, async (req, res) => {
         // Size columns - up to 5 sizes supported
         { id: 'Size 1', title: 'Size 1' },
         { id: 'Bottle Label 1', title: 'Bottle Label 1 (Optional)' },
-        { id: 'Original Cost 1', title: 'Original Unit/Case Cost 1' },
-        { id: 'Discount Price 1', title: 'Promo Unit/Case Cost 1' },
-        { id: 'Bottles Per Case 1', title: '# of Bottles Per Unit/Case 1' },
+        { id: 'Original Cost 1', title: 'Original Case Cost 1' },
+        { id: 'Discount Price 1', title: 'Promo Case Cost 1' },
+        { id: 'Bottles Per Case 1', title: '# of Bottles Per Case 1' },
         { id: 'Discount Tiers 1', title: 'Discount Tiers 1 (Format: Qty1-Disc1,Qty2-Disc2)' },
         { id: 'Size 2', title: 'Size 2' },
         { id: 'Bottle Label 2', title: 'Bottle Label 2 (Optional)' },
-        { id: 'Original Cost 2', title: 'Original Unit/Case Cost 2' },
-        { id: 'Discount Price 2', title: 'Promo Unit/Case Cost 2' },
-        { id: 'Bottles Per Case 2', title: '# of Bottles Per Unit/Case 2' },
+        { id: 'Original Cost 2', title: 'Original Case Cost 2' },
+        { id: 'Discount Price 2', title: 'Promo Case Cost 2' },
+        { id: 'Bottles Per Case 2', title: '# of Bottles Per Case 2' },
         { id: 'Discount Tiers 2', title: 'Discount Tiers 2 (Format: Qty1-Disc1,Qty2-Disc2)' },
         { id: 'Size 3', title: 'Size 3' },
         { id: 'Bottle Label 3', title: 'Bottle Label 3 (Optional)' },
-        { id: 'Original Cost 3', title: 'Original Unit/Case Cost 3' },
-        { id: 'Discount Price 3', title: 'Promo Unit/Case Cost 3' },
-        { id: 'Bottles Per Case 3', title: '# of Bottles Per Unit/Case 3' },
+        { id: 'Original Cost 3', title: 'Original Case Cost 3' },
+        { id: 'Discount Price 3', title: 'Promo Case Cost 3' },
+        { id: 'Bottles Per Case 3', title: '# of Bottles Per Case 3' },
         { id: 'Discount Tiers 3', title: 'Discount Tiers 3 (Format: Qty1-Disc1,Qty2-Disc2)' },
         { id: 'Size 4', title: 'Size 4' },
         { id: 'Bottle Label 4', title: 'Bottle Label 4 (Optional)' },
-        { id: 'Original Cost 4', title: 'Original Unit/Case Cost 4' },
-        { id: 'Discount Price 4', title: 'Promo Unit/Case Cost 4' },
-        { id: 'Bottles Per Case 4', title: '# of Bottles Per Unit/Case 4' },
+        { id: 'Original Cost 4', title: 'Original Case Cost 4' },
+        { id: 'Discount Price 4', title: 'Promo Case Cost 4' },
+        { id: 'Bottles Per Case 4', title: '# of Bottles Per Case 4' },
         { id: 'Discount Tiers 4', title: 'Discount Tiers 4 (Format: Qty1-Disc1,Qty2-Disc2)' },
         { id: 'Size 5', title: 'Size 5' },
         { id: 'Bottle Label 5', title: 'Bottle Label 5 (Optional)' },
-        { id: 'Original Cost 5', title: 'Original Unit/Case Cost 5' },
-        { id: 'Discount Price 5', title: 'Promo Unit/Case Cost 5' },
-        { id: 'Bottles Per Case 5', title: '# of Bottles Per Unit/Case 5' },
+        { id: 'Original Cost 5', title: 'Original Case Cost 5' },
+        { id: 'Discount Price 5', title: 'Promo Case Cost 5' },
+        { id: 'Bottles Per Case 5', title: '# of Bottles Per Case 5' },
         { id: 'Discount Tiers 5', title: 'Discount Tiers 5 (Format: Qty1-Disc1,Qty2-Disc2)' }
     ];
 
@@ -226,7 +226,7 @@ const validateDealRow = (row) => {
         // If any size field is filled, all must be filled
         if (size || originalCost || discountPrice) {
             if (!size || !originalCost || !discountPrice) {
-                errors.push(`Size ${i}: If you provide size information, all fields (Size, Original Unit/Case Cost, Promo Unit/Case Cost) are required`);
+                errors.push(`Size ${i}: If you provide size information, all fields (Size, Original Case Cost, Promo Case Cost) are required`);
                 continue;
             }
             
@@ -237,20 +237,20 @@ const validateDealRow = (row) => {
             const discPriceNum = Number(discountPrice);
             
             if (isNaN(origCostNum)) {
-                errors.push(`Size ${i}: Original Unit/Case Cost must be a valid number, got: "${originalCost}"`);
+                errors.push(`Size ${i}: Original Case Cost must be a valid number, got: "${originalCost}"`);
             } else if (origCostNum < 0) {
-                errors.push(`Size ${i}: Original Unit/Case Cost cannot be negative`);
+                errors.push(`Size ${i}: Original Case Cost cannot be negative`);
             }
             
             if (isNaN(discPriceNum)) {
-                errors.push(`Size ${i}: Promo Unit/Case Cost must be a valid number, got: "${discountPrice}"`);
+                errors.push(`Size ${i}: Promo Case Cost must be a valid number, got: "${discountPrice}"`);
             } else if (discPriceNum < 0) {
-                errors.push(`Size ${i}: Promo Unit/Case Cost cannot be negative`);
+                errors.push(`Size ${i}: Promo Case Cost cannot be negative`);
             }
             
             // Validate price relationship
             if (!isNaN(origCostNum) && !isNaN(discPriceNum) && discPriceNum >= origCostNum) {
-                errors.push(`Size ${i}: Promo Unit/Case Cost (${discPriceNum}) must be less than Original Unit/Case Cost (${origCostNum})`);
+                errors.push(`Size ${i}: Promo Case Cost (${discPriceNum}) must be less than Original Case Cost (${origCostNum})`);
             }
             
             // Validate discount tiers if provided
