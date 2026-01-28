@@ -81,6 +81,33 @@ const dealSchema = new mongoose.Schema({
     type: String,
     enum: ['approved', 'rejected'],
   },
+  decisionChangeHistory: [{
+    previousStatus: {
+      type: String,
+      enum: ['approved', 'rejected'],
+    },
+    newStatus: {
+      type: String,
+      enum: ['approved', 'rejected'],
+    },
+    reason: {
+      type: String,
+      default: ''
+    },
+    notes: {
+      type: String,
+      default: ''
+    },
+    changedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    changedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   totalRevenue: {
     type: Number,
     default: 0

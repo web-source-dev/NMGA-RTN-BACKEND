@@ -94,22 +94,27 @@ router.get('/distributor-deals', isDistributorAdmin, async (req, res) => {
         } = req.query;
 
         // Base query
-        let query = { distributor: distributorId };
-
-        // Add condition to only get deals with commitments
-        query = {
-            ...query,
+        let query = { 
+            distributor: distributorId,
             commitments: { $exists: true, $ne: [] }
         };
 
-        // Search filter
-        if (search) {
-            query = {
-                ...query,
+        // Search filter - combine with base query using $and
+        if (search && search.trim() !== '') {
+            const searchConditions = {
                 $or: [
-                    { name: { $regex: search, $options: 'i' } },
-                    { category: { $regex: search, $options: 'i' } },
-                    { description: { $regex: search, $options: 'i' } }
+                    { name: { $regex: search.trim(), $options: 'i' } },
+                    { category: { $regex: search.trim(), $options: 'i' } },
+                    { description: { $regex: search.trim(), $options: 'i' } }
+                ]
+            };
+            
+            // Combine base query with search using $and
+            query = {
+                $and: [
+                    { distributor: distributorId },
+                    { commitments: { $exists: true, $ne: [] } },
+                    searchConditions
                 ]
             };
         }
@@ -171,12 +176,22 @@ router.get('/distributor-deals', isDistributorAdmin, async (req, res) => {
         
         // Only apply date query if there are date filters
         if (Object.keys(dateQuery).length > 0) {
-            query = { ...query, ...dateQuery };
+            if (query.$and) {
+                // If query already has $and (from search), add dateQuery to it
+                query.$and.push(dateQuery);
+            } else {
+                // Otherwise, merge dateQuery directly
+                query = { ...query, ...dateQuery };
+            }
         }
 
         // Status filter
         if (status) {
-            query.status = status;
+            if (query.$and) {
+                query.$and.push({ status });
+            } else {
+                query.status = status;
+            }
         }
 
         // Calculate skip value for pagination
@@ -314,26 +329,35 @@ router.get('/admin-all-deals', isAdmin, async (req, res) => {
         } = req.query;
 
         // Base query
-        let query = {};
-        query = {
-            ...query,
+        const baseQuery = {
             commitments: { $exists: true, $ne: [] }
         };
+        
         // If distributorId is provided, filter by that distributor
         if (distributorId) {
-            query.distributor = distributorId;
+            baseQuery.distributor = distributorId;
         }
 
-        // Search filter
-        if (search) {
-            query = {
-                ...query,
+        // Search filter - combine with base query using $and
+        let query;
+        if (search && search.trim() !== '') {
+            const searchConditions = {
                 $or: [
-                    { name: { $regex: search, $options: 'i' } },
-                    { category: { $regex: search, $options: 'i' } },
-                    { description: { $regex: search, $options: 'i' } }
+                    { name: { $regex: search.trim(), $options: 'i' } },
+                    { category: { $regex: search.trim(), $options: 'i' } },
+                    { description: { $regex: search.trim(), $options: 'i' } }
                 ]
             };
+            
+            // Combine base query with search using $and
+            query = {
+                $and: [
+                    baseQuery,
+                    searchConditions
+                ]
+            };
+        } else {
+            query = baseQuery;
         }
 
         // Date filters
@@ -393,12 +417,22 @@ router.get('/admin-all-deals', isAdmin, async (req, res) => {
         
         // Only apply date query if there are date filters
         if (Object.keys(dateQuery).length > 0) {
-            query = { ...query, ...dateQuery };
+            if (query.$and) {
+                // If query already has $and (from search), add dateQuery to it
+                query.$and.push(dateQuery);
+            } else {
+                // Otherwise, merge dateQuery directly
+                query = { ...query, ...dateQuery };
+            }
         }
 
         // Status filter
         if (status) {
-            query.status = status;
+            if (query.$and) {
+                query.$and.push({ status });
+            } else {
+                query.status = status;
+            }
         }
 
         // Calculate skip value for pagination
@@ -1226,6 +1260,313 @@ router.post('/bulk-decline-commitments-admin', isAdmin, async (req, res) => {
             distributorId: req.body.distributorId
         });
         res.status(500).json({ success: false, message: 'Error processing bulk decline' });
+    }
+});
+
+// Change deal decision (for distributors - already approved/declined deals)
+router.post('/change-deal-decision', isDistributorAdmin, async (req, res) => {
+    try {
+        const { currentUser, originalUser, isImpersonating } = getCurrentUserContext(req);
+        const distributorId = currentUser.id;
+        const { dealId, newStatus, reason, notes } = req.body;
+
+        if (!dealId || !newStatus) {
+            return res.status(400).json({ success: false, message: 'Missing required fields' });
+        }
+
+        if (!['approved', 'rejected'].includes(newStatus)) {
+            return res.status(400).json({ success: false, message: 'Invalid status. Must be approved or rejected' });
+        }
+
+        // Verify the deal belongs to the distributor
+        const deal = await Deal.findOne({ _id: dealId, distributor: distributorId });
+        if (!deal) {
+            return res.status(403).json({ success: false, message: 'Deal not found or unauthorized access' });
+        }
+
+        // Check if deal has bulkAction set
+        if (!deal.bulkAction) {
+            return res.status(400).json({ success: false, message: 'Deal does not have a decision yet. Use approve/decline instead.' });
+        }
+
+        const previousStatus = deal.bulkStatus;
+        
+        // If changing to the same status, return error
+        if (previousStatus === newStatus) {
+            return res.status(400).json({ success: false, message: `Deal is already ${newStatus}` });
+        }
+
+        // Get all commitments for this deal
+        const allCommitments = await Commitment.find({ dealId: dealId });
+        
+        // Determine which commitments to update based on new status
+        if (newStatus === 'approved') {
+            // Change declined and pending commitments to approved
+            const commitmentsToUpdate = allCommitments.filter(c => c.status === 'declined' || c.status === 'pending');
+            
+            if (commitmentsToUpdate.length > 0) {
+                await Commitment.updateMany(
+                    { dealId: dealId, status: { $in: ['declined', 'pending'] } },
+                    {
+                        $set: {
+                            status: 'approved',
+                            distributorResponse: reason || 'Decision changed to approved by distributor'
+                        }
+                    }
+                );
+
+                // Store status changes for daily summary
+                for (const commitment of commitmentsToUpdate) {
+                    await storeCommitmentStatusChange(
+                        commitment,
+                        deal,
+                        'approved',
+                        reason || 'Decision changed to approved by distributor',
+                        'distributor',
+                        distributorId
+                    );
+                }
+            }
+        } else if (newStatus === 'rejected') {
+            // Change approved and pending commitments to declined
+            const commitmentsToUpdate = allCommitments.filter(c => c.status === 'approved' || c.status === 'pending');
+            
+            if (commitmentsToUpdate.length > 0) {
+                await Commitment.updateMany(
+                    { dealId: dealId, status: { $in: ['approved', 'pending'] } },
+                    {
+                        $set: {
+                            status: 'declined',
+                            distributorResponse: reason || 'Decision changed to declined by distributor'
+                        }
+                    }
+                );
+
+                // Store status changes for daily summary
+                for (const commitment of commitmentsToUpdate) {
+                    await storeCommitmentStatusChange(
+                        commitment,
+                        deal,
+                        'declined',
+                        reason || 'Decision changed to declined by distributor',
+                        'distributor',
+                        distributorId
+                    );
+                }
+            }
+        }
+
+        // Recalculate totals based on new status
+        const commitments = await Commitment.find({ dealId: dealId, status: 'approved' });
+        
+        const totalSold = commitments.reduce((sum, c) => {
+            if (c.sizeCommitments && c.sizeCommitments.length > 0) {
+                return sum + c.sizeCommitments.reduce((sizeSum, sizeItem) => 
+                    sizeSum + sizeItem.quantity, 0);
+            }
+            return sum + (c.quantity || 0);
+        }, 0);
+        
+        const totalRevenue = commitments.reduce((sum, c) => sum + c.totalPrice, 0);
+
+        // Add to decision change history
+        const decisionChange = {
+            previousStatus: previousStatus,
+            newStatus: newStatus,
+            reason: reason || '',
+            notes: notes || '',
+            changedBy: distributorId,
+            changedAt: new Date()
+        };
+
+        const updatedDeal = await Deal.findByIdAndUpdate(dealId, {
+            bulkStatus: newStatus,
+            totalSold,
+            totalRevenue,
+            $push: { decisionChangeHistory: decisionChange }
+        }, { new: true });
+
+        // Log the action
+        await logCollaboratorAction(req, 'change_deal_decision', 'deal decision', {
+            dealTitle: deal.name,
+            dealId: dealId,
+            previousStatus: previousStatus,
+            newStatus: newStatus,
+            reason: reason || '',
+            additionalInfo: `Distributor changed deal decision from ${previousStatus} to ${newStatus}`
+        });
+
+        // Broadcast real-time updates
+        if (updatedDeal) {
+            broadcastDealUpdate(updatedDeal, 'updated');
+            broadcastSingleDealUpdate(dealId, updatedDeal);
+        }
+
+        res.json({
+            success: true,
+            message: `Deal decision changed from ${previousStatus} to ${newStatus}`,
+            deal: updatedDeal
+        });
+    } catch (error) {
+        console.error('Error changing deal decision:', error);
+        await logError(req, 'change_deal_decision', 'deal decision', error, {
+            dealId: req.body.dealId,
+            newStatus: req.body.newStatus
+        });
+        res.status(500).json({ success: false, message: 'Error changing deal decision' });
+    }
+});
+
+// Change deal decision (for already approved/declined deals)
+router.post('/change-deal-decision-admin', isAdmin, async (req, res) => {
+    try {
+        const { dealId, distributorId, newStatus, reason, notes } = req.body;
+
+        if (!dealId || !distributorId || !newStatus) {
+            return res.status(400).json({ success: false, message: 'Missing required fields' });
+        }
+
+        if (!['approved', 'rejected'].includes(newStatus)) {
+            return res.status(400).json({ success: false, message: 'Invalid status. Must be approved or rejected' });
+        }
+
+        // Verify the deal belongs to the distributor
+        const deal = await Deal.findOne({ _id: dealId, distributor: distributorId });
+        if (!deal) {
+            return res.status(403).json({ success: false, message: 'Deal not found or unauthorized access' });
+        }
+
+        // Check if deal has bulkAction set
+        if (!deal.bulkAction) {
+            return res.status(400).json({ success: false, message: 'Deal does not have a decision yet. Use approve/decline instead.' });
+        }
+
+        const previousStatus = deal.bulkStatus;
+        
+        // If changing to the same status, return error
+        if (previousStatus === newStatus) {
+            return res.status(400).json({ success: false, message: `Deal is already ${newStatus}` });
+        }
+
+        // Get all commitments for this deal
+        const allCommitments = await Commitment.find({ dealId: dealId });
+        
+        // Determine which commitments to update based on new status
+        if (newStatus === 'approved') {
+            // Change declined and pending commitments to approved
+            const commitmentsToUpdate = allCommitments.filter(c => c.status === 'declined' || c.status === 'pending');
+            
+            if (commitmentsToUpdate.length > 0) {
+                await Commitment.updateMany(
+                    { dealId: dealId, status: { $in: ['declined', 'pending'] } },
+                    {
+                        $set: {
+                            status: 'approved',
+                            distributorResponse: reason || 'Decision changed to approved by admin'
+                        }
+                    }
+                );
+
+                // Store status changes for daily summary
+                for (const commitment of commitmentsToUpdate) {
+                    await storeCommitmentStatusChange(
+                        commitment,
+                        deal,
+                        'approved',
+                        reason || 'Decision changed to approved by admin',
+                        'admin',
+                        req.user.id
+                    );
+                }
+            }
+        } else if (newStatus === 'rejected') {
+            // Change approved and pending commitments to declined
+            const commitmentsToUpdate = allCommitments.filter(c => c.status === 'approved' || c.status === 'pending');
+            
+            if (commitmentsToUpdate.length > 0) {
+                await Commitment.updateMany(
+                    { dealId: dealId, status: { $in: ['approved', 'pending'] } },
+                    {
+                        $set: {
+                            status: 'declined',
+                            distributorResponse: reason || 'Decision changed to declined by admin'
+                        }
+                    }
+                );
+
+                // Store status changes for daily summary
+                for (const commitment of commitmentsToUpdate) {
+                    await storeCommitmentStatusChange(
+                        commitment,
+                        deal,
+                        'declined',
+                        reason || 'Decision changed to declined by admin',
+                        'admin',
+                        req.user.id
+                    );
+                }
+            }
+        }
+
+        // Recalculate totals based on new status
+        const commitments = await Commitment.find({ dealId: dealId, status: 'approved' });
+        
+        const totalSold = commitments.reduce((sum, c) => {
+            if (c.sizeCommitments && c.sizeCommitments.length > 0) {
+                return sum + c.sizeCommitments.reduce((sizeSum, sizeItem) => 
+                    sizeSum + sizeItem.quantity, 0);
+            }
+            return sum + (c.quantity || 0);
+        }, 0);
+        
+        const totalRevenue = commitments.reduce((sum, c) => sum + c.totalPrice, 0);
+
+        // Add to decision change history
+        const decisionChange = {
+            previousStatus: previousStatus,
+            newStatus: newStatus,
+            reason: reason || '',
+            notes: notes || '',
+            changedBy: req.user.id,
+            changedAt: new Date()
+        };
+
+        const updatedDeal = await Deal.findByIdAndUpdate(dealId, {
+            bulkStatus: newStatus,
+            totalSold,
+            totalRevenue,
+            $push: { decisionChangeHistory: decisionChange }
+        }, { new: true });
+
+        // Log the action
+        await logCollaboratorAction(req, 'change_deal_decision_admin', 'deal decision', {
+            dealTitle: deal.name,
+            dealId: dealId,
+            previousStatus: previousStatus,
+            newStatus: newStatus,
+            reason: reason || '',
+            additionalInfo: `Admin changed deal decision from ${previousStatus} to ${newStatus}`
+        });
+
+        // Broadcast real-time updates
+        if (updatedDeal) {
+            broadcastDealUpdate(updatedDeal, 'updated');
+            broadcastSingleDealUpdate(dealId, updatedDeal);
+        }
+
+        res.json({
+            success: true,
+            message: `Deal decision changed from ${previousStatus} to ${newStatus}`,
+            deal: updatedDeal
+        });
+    } catch (error) {
+        console.error('Error changing deal decision:', error);
+        await logError(req, 'change_deal_decision_admin', 'deal decision', error, {
+            dealId: req.body.dealId,
+            distributorId: req.body.distributorId,
+            newStatus: req.body.newStatus
+        });
+        res.status(500).json({ success: false, message: 'Error changing deal decision' });
     }
 });
 

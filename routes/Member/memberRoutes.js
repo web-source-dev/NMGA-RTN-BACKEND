@@ -8,6 +8,7 @@ const Favorite = require('../../models/Favorite');
 const bcrypt = require('bcryptjs');
 const { isMemberAdmin, getCurrentUserContext,isAuthenticated } = require('../../middleware/auth');
 const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
+const { getCommitmentDates, MONTHS } = require('../../utils/monthMapping');
 
 // Get member stats
 router.get('/stats', isMemberAdmin, async (req, res) => {
@@ -105,15 +106,94 @@ router.get('/commitments', isMemberAdmin, async (req, res) => {
     const { currentUser, originalUser, isImpersonating } = getCurrentUserContext(req);
     const userId = currentUser.id;
     
-    const commitments = await Commitment.find({ userId })
+    // Extract filter parameters
+    const {
+      dealName,
+      quantity,
+      status,
+      startDate,
+      endDate,
+      month,
+      year
+    } = req.query;
+    
+    // Build query
+    let query = { userId };
+    
+    // Status filter
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+    
+    // Month filter - filter by commitment period dates
+    if (month && month !== '' && year) {
+      const monthIndex = parseInt(month) - 1;
+      const monthName = MONTHS[monthIndex];
+      const filterYear = parseInt(year);
+      
+      const commitmentDates = getCommitmentDates(monthName, filterYear);
+      const commitmentStart = commitmentDates.commitmentStart;
+      const commitmentEnd = commitmentDates.commitmentEnd;
+      
+      // Find commitments where the deal's commitment period overlaps with the selected month
+      const dealsInMonth = await Deal.find({
+        status: 'active',
+        $or: [
+          {
+            $and: [
+              { commitmentStartAt: { $lte: commitmentEnd } },
+              { commitmentEndsAt: { $gte: commitmentStart } }
+            ]
+          },
+          {
+            $and: [
+              { commitmentStartAt: { $exists: false } },
+              { dealStartAt: { $lte: commitmentEnd } },
+              { dealEndsAt: { $gte: commitmentStart } }
+            ]
+          }
+        ]
+      }).select('_id');
+      
+      const dealIds = dealsInMonth.map(deal => deal._id);
+      if (dealIds.length === 0) {
+        // If no deals match the month filter, return empty array
+        return res.json([]);
+      }
+      query.dealId = { $in: dealIds };
+    }
+    
+    // Fetch commitments with filters
+    let commitments = await Commitment.find(query)
       .sort({ createdAt: -1 })
-      .populate('dealId', 'name category')
-      .populate('userId', 'name');
+      .populate('dealId', 'name category commitmentStartAt commitmentEndsAt dealStartAt dealEndsAt')
+      .populate('userId', 'name')
+      .lean();
+    
+    // Apply deal name filter (client-side filtering needed for populated field)
+    if (dealName && dealName.trim() !== '') {
+      const searchTerm = dealName.trim().toLowerCase();
+      commitments = commitments.filter(c => 
+        c.dealId && c.dealId.name && c.dealId.name.toLowerCase().includes(searchTerm)
+      );
+    }
+    
+    // Apply quantity filter (client-side filtering needed for calculated field)
+    if (quantity && quantity.trim() !== '') {
+      const quantityTerm = quantity.trim();
+      commitments = commitments.filter(c => {
+        const totalQuantity = c.modifiedByDistributor && c.modifiedSizeCommitments
+          ? c.modifiedSizeCommitments.reduce((sum, size) => sum + (size.quantity || 0), 0)
+          : c.sizeCommitments.reduce((sum, size) => sum + (size.quantity || 0), 0);
+        return totalQuantity.toString().includes(quantityTerm);
+      });
+    }
     
     // Log the action
     await logCollaboratorAction(req, 'view_member_commitments', 'commitments', { 
       totalCommitments: commitments.length,
-      additionalInfo: `Viewed ${commitments.length} member commitments`
+      filters: { dealName, quantity, status, startDate, endDate, month, year },
+      additionalInfo: `Viewed ${commitments.length} member commitments with filters`
     });
     
     res.json(commitments);
@@ -1230,6 +1310,149 @@ router.get('/dashboard-access', isMemberAdmin, async (req, res) => {
     console.error('Error fetching member dashboard access:', error);
     await logError(req, 'access_member_dashboard', 'dashboard', error);
     res.status(500).json({ message: 'Error fetching member dashboard access' });
+  }
+});
+
+// Get all deals with commitments comparison for member report
+router.get('/deals-report', isMemberAdmin, async (req, res) => {
+  try {
+    const { currentUser, originalUser, isImpersonating } = getCurrentUserContext(req);
+    const userId = currentUser.id;
+    
+    const { month, year } = req.query;
+    
+    // Build date filter if month/year are provided
+    let dateQuery = {};
+    if (month && month !== '' && year) {
+      const monthIndex = parseInt(month) - 1; // Convert to 0-based index
+      const monthName = MONTHS[monthIndex];
+      const filterYear = parseInt(year);
+      
+      // Get commitment dates for this month and year
+      const commitmentDates = getCommitmentDates(monthName, filterYear);
+      const commitmentStart = commitmentDates.commitmentStart;
+      const commitmentEnd = commitmentDates.commitmentEnd;
+      
+      // Filter deals where commitment period overlaps with the selected month's commitment period
+      dateQuery = {
+        $or: [
+          {
+            $and: [
+              { commitmentStartAt: { $lte: commitmentEnd } },
+              { commitmentEndsAt: { $gte: commitmentStart } }
+            ]
+          },
+          // Also include deals that don't have commitment dates but have deal dates in this range
+          {
+            $and: [
+              { commitmentStartAt: { $exists: false } },
+              { dealStartAt: { $lte: commitmentEnd } },
+              { dealEndsAt: { $gte: commitmentStart } }
+            ]
+          }
+        ]
+      };
+    }
+    
+    // Build base query
+    let query = { status: 'active' };
+    
+    // Add date filter if provided
+    if (Object.keys(dateQuery).length > 0) {
+      query = { ...query, ...dateQuery };
+    }
+    
+    // Fetch all deals matching the criteria
+    const deals = await Deal.find(query)
+      .populate('distributor', 'businessName name email')
+      .sort({ name: 1 })
+      .lean();
+    
+    // Fetch all commitments for this member
+    const commitments = await Commitment.find({ userId })
+      .populate('dealId', 'name')
+      .lean();
+    
+    // Create a map of dealId -> commitment for quick lookup
+    const commitmentMap = {};
+    commitments.forEach(commitment => {
+      const dealId = commitment.dealId?._id?.toString();
+      if (dealId) {
+        if (!commitmentMap[dealId]) {
+          commitmentMap[dealId] = [];
+        }
+        commitmentMap[dealId].push(commitment);
+      }
+    });
+    
+    // Process deals and add commitment information
+    const dealsWithCommitments = deals.map(deal => {
+      const dealId = deal._id.toString();
+      const dealCommitments = commitmentMap[dealId] || [];
+      
+      // Determine commitment status
+      let commitmentStatus = 'No Commitment';
+      let commitmentDetails = null;
+      
+      if (dealCommitments.length > 0) {
+        // Find the most recent commitment
+        const latestCommitment = dealCommitments.reduce((latest, curr) => {
+          return new Date(curr.createdAt) > new Date(latest.createdAt) ? curr : latest;
+        });
+        
+        commitmentStatus = latestCommitment.status.charAt(0).toUpperCase() + latestCommitment.status.slice(1);
+        commitmentDetails = {
+          status: latestCommitment.status,
+          totalQuantity: latestCommitment.modifiedByDistributor && latestCommitment.modifiedSizeCommitments
+            ? latestCommitment.modifiedSizeCommitments.reduce((sum, size) => sum + (size.quantity || 0), 0)
+            : latestCommitment.sizeCommitments.reduce((sum, size) => sum + (size.quantity || 0), 0),
+          totalPrice: latestCommitment.modifiedTotalPrice || latestCommitment.totalPrice,
+          createdAt: latestCommitment.createdAt,
+          distributorResponse: latestCommitment.distributorResponse || null
+        };
+      }
+      
+      // Determine which month this deal's commitment period falls into
+      let commitmentMonth = null;
+      if (deal.commitmentStartAt && deal.commitmentEndsAt) {
+        const startDate = new Date(deal.commitmentStartAt);
+        const endDate = new Date(deal.commitmentEndsAt);
+        const monthIndex = startDate.getMonth();
+        const year = startDate.getFullYear();
+        commitmentMonth = `${MONTHS[monthIndex]} ${year}`;
+      }
+      
+      return {
+        ...deal,
+        commitmentStatus,
+        commitmentDetails,
+        commitmentMonth,
+        hasCommitment: dealCommitments.length > 0
+      };
+    });
+    
+    // Log the action
+    await logCollaboratorAction(req, 'view_deals_report', 'report', { 
+      userId: userId,
+      month: month || 'all',
+      year: year || 'all',
+      totalDeals: dealsWithCommitments.length,
+      dealsWithCommitments: dealsWithCommitments.filter(d => d.hasCommitment).length,
+      additionalInfo: `Viewed deals report: ${dealsWithCommitments.length} deals, ${dealsWithCommitments.filter(d => d.hasCommitment).length} with commitments`
+    });
+    
+    res.json({
+      deals: dealsWithCommitments,
+      month: month || null,
+      year: year || null,
+      totalDeals: dealsWithCommitments.length,
+      dealsWithCommitments: dealsWithCommitments.filter(d => d.hasCommitment).length,
+      dealsWithoutCommitments: dealsWithCommitments.filter(d => !d.hasCommitment).length
+    });
+  } catch (error) {
+    console.error('Error fetching deals report:', error);
+    await logError(req, 'view_deals_report', 'report', error);
+    res.status(500).json({ message: 'Error fetching deals report' });
   }
 });
 
