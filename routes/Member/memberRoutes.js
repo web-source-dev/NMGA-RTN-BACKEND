@@ -8,7 +8,6 @@ const Favorite = require('../../models/Favorite');
 const bcrypt = require('bcryptjs');
 const { isMemberAdmin, getCurrentUserContext,isAuthenticated } = require('../../middleware/auth');
 const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
-const { getCommitmentDates, MONTHS } = require('../../utils/monthMapping');
 
 // Get member stats
 router.get('/stats', isMemberAdmin, async (req, res) => {
@@ -112,9 +111,7 @@ router.get('/commitments', isMemberAdmin, async (req, res) => {
       quantity,
       status,
       startDate,
-      endDate,
-      month,
-      year
+      endDate
     } = req.query;
     
     // Build query
@@ -125,43 +122,25 @@ router.get('/commitments', isMemberAdmin, async (req, res) => {
       query.status = status;
     }
     
-    // Month filter - filter by commitment period dates
-    if (month && month !== '' && year) {
-      const monthIndex = parseInt(month) - 1;
-      const monthName = MONTHS[monthIndex];
-      const filterYear = parseInt(year);
+    // Date range filter - filter by commitment creation date
+    if (startDate && endDate) {
+      const startDateObj = new Date(startDate);
+      startDateObj.setHours(0, 0, 0, 0);
+      const endDateObj = new Date(endDate);
+      endDateObj.setHours(23, 59, 59, 999);
       
-      const commitmentDates = getCommitmentDates(monthName, filterYear);
-      // Use Date objects directly from getCommitmentDates
-      const commitmentStart = commitmentDates.commitmentStartDate;
-      const commitmentEnd = commitmentDates.commitmentEndDate;
-      
-      // Find commitments where the deal's commitment period overlaps with the selected month
-      const dealsInMonth = await Deal.find({
-        status: 'active',
-        $or: [
-          {
-            $and: [
-              { commitmentStartAt: { $lte: commitmentEnd } },
-              { commitmentEndsAt: { $gte: commitmentStart } }
-            ]
-          },
-          {
-            $and: [
-              { commitmentStartAt: { $exists: false } },
-              { dealStartAt: { $lte: commitmentEnd } },
-              { dealEndsAt: { $gte: commitmentStart } }
-            ]
-          }
-        ]
-      }).select('_id');
-      
-      const dealIds = dealsInMonth.map(deal => deal._id);
-      if (dealIds.length === 0) {
-        // If no deals match the month filter, return empty array
-        return res.json([]);
-      }
-      query.dealId = { $in: dealIds };
+      query.createdAt = {
+        $gte: startDateObj,
+        $lte: endDateObj
+      };
+    } else if (startDate) {
+      const startDateObj = new Date(startDate);
+      startDateObj.setHours(0, 0, 0, 0);
+      query.createdAt = { $gte: startDateObj };
+    } else if (endDate) {
+      const endDateObj = new Date(endDate);
+      endDateObj.setHours(23, 59, 59, 999);
+      query.createdAt = { $lte: endDateObj };
     }
     
     // Fetch commitments with filters
@@ -193,7 +172,7 @@ router.get('/commitments', isMemberAdmin, async (req, res) => {
     // Log the action
     await logCollaboratorAction(req, 'view_member_commitments', 'commitments', { 
       totalCommitments: commitments.length,
-      filters: { dealName, quantity, status, startDate, endDate, month, year },
+      filters: { dealName, quantity, status, startDate, endDate },
       additionalInfo: `Viewed ${commitments.length} member commitments with filters`
     });
     
@@ -1320,48 +1299,89 @@ router.get('/deals-report', isMemberAdmin, async (req, res) => {
     const { currentUser, originalUser, isImpersonating } = getCurrentUserContext(req);
     const userId = currentUser.id;
     
-    const { month, year } = req.query;
-    
-    // Build date filter if month/year are provided
-    let dateQuery = {};
-    if (month && month !== '' && year) {
-      const monthIndex = parseInt(month) - 1; // Convert to 0-based index
-      const monthName = MONTHS[monthIndex];
-      const filterYear = parseInt(year);
-      
-      // Get commitment dates for this month and year
-      const commitmentDates = getCommitmentDates(monthName, filterYear);
-      // Use Date objects directly from getCommitmentDates
-      const commitmentStart = commitmentDates.commitmentStartDate;
-      const commitmentEnd = commitmentDates.commitmentEndDate;
-      
-      // Filter deals where commitment period overlaps with the selected month's commitment period
-      dateQuery = {
-        $or: [
-          {
-            $and: [
-              { commitmentStartAt: { $lte: commitmentEnd } },
-              { commitmentEndsAt: { $gte: commitmentStart } }
-            ]
-          },
-          // Also include deals that don't have commitment dates but have deal dates in this range
-          {
-            $and: [
-              { commitmentStartAt: { $exists: false } },
-              { dealStartAt: { $lte: commitmentEnd } },
-              { dealEndsAt: { $gte: commitmentStart } }
-            ]
-          }
-        ]
-      };
-    }
+    const { startDate, endDate } = req.query;
     
     // Build base query
     let query = { status: 'active' };
     
-    // Add date filter if provided
-    if (Object.keys(dateQuery).length > 0) {
-      query = { ...query, ...dateQuery };
+    // Build date filter if date range is provided
+    // Filter deals by their commitment period dates that overlap with the selected date range
+    if (startDate || endDate) {
+      const dateConditions = [];
+      
+      if (startDate && endDate) {
+        const startDateObj = new Date(startDate);
+        startDateObj.setHours(0, 0, 0, 0);
+        const endDateObj = new Date(endDate);
+        endDateObj.setHours(23, 59, 59, 999);
+        
+        // Find deals whose commitment period overlaps with the date range
+        dateConditions.push({
+          $or: [
+            {
+              $and: [
+                { commitmentStartAt: { $exists: true } },
+                { commitmentStartAt: { $lte: endDateObj } },
+                { commitmentEndsAt: { $gte: startDateObj } }
+              ]
+            },
+            {
+              $and: [
+                { commitmentStartAt: { $exists: false } },
+                { dealStartAt: { $exists: true } },
+                { dealStartAt: { $lte: endDateObj } },
+                { dealEndsAt: { $gte: startDateObj } }
+              ]
+            }
+          ]
+        });
+      } else if (startDate) {
+        const startDateObj = new Date(startDate);
+        startDateObj.setHours(0, 0, 0, 0);
+        
+        dateConditions.push({
+          $or: [
+            {
+              $and: [
+                { commitmentStartAt: { $exists: true } },
+                { commitmentEndsAt: { $gte: startDateObj } }
+              ]
+            },
+            {
+              $and: [
+                { commitmentStartAt: { $exists: false } },
+                { dealStartAt: { $exists: true } },
+                { dealEndsAt: { $gte: startDateObj } }
+              ]
+            }
+          ]
+        });
+      } else if (endDate) {
+        const endDateObj = new Date(endDate);
+        endDateObj.setHours(23, 59, 59, 999);
+        
+        dateConditions.push({
+          $or: [
+            {
+              $and: [
+                { commitmentStartAt: { $exists: true } },
+                { commitmentStartAt: { $lte: endDateObj } }
+              ]
+            },
+            {
+              $and: [
+                { commitmentStartAt: { $exists: false } },
+                { dealStartAt: { $exists: true } },
+                { dealStartAt: { $lte: endDateObj } }
+              ]
+            }
+          ]
+        });
+      }
+      
+      if (dateConditions.length > 0) {
+        query = { ...query, ...dateConditions[0] };
+      }
     }
     
     // Fetch all deals matching the criteria
@@ -1436,8 +1456,8 @@ router.get('/deals-report', isMemberAdmin, async (req, res) => {
     // Log the action
     await logCollaboratorAction(req, 'view_deals_report', 'report', { 
       userId: userId,
-      month: month || 'all',
-      year: year || 'all',
+      startDate: startDate || null,
+      endDate: endDate || null,
       totalDeals: dealsWithCommitments.length,
       dealsWithCommitments: dealsWithCommitments.filter(d => d.hasCommitment).length,
       additionalInfo: `Viewed deals report: ${dealsWithCommitments.length} deals, ${dealsWithCommitments.filter(d => d.hasCommitment).length} with commitments`
@@ -1445,8 +1465,8 @@ router.get('/deals-report', isMemberAdmin, async (req, res) => {
     
     res.json({
       deals: dealsWithCommitments,
-      month: month || null,
-      year: year || null,
+      startDate: startDate || null,
+      endDate: endDate || null,
       totalDeals: dealsWithCommitments.length,
       dealsWithCommitments: dealsWithCommitments.filter(d => d.hasCommitment).length,
       dealsWithoutCommitments: dealsWithCommitments.filter(d => !d.hasCommitment).length
