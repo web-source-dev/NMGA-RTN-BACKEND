@@ -132,8 +132,9 @@ router.get('/commitments', isMemberAdmin, async (req, res) => {
       const filterYear = parseInt(year);
       
       const commitmentDates = getCommitmentDates(monthName, filterYear);
-      const commitmentStart = commitmentDates.commitmentStart;
-      const commitmentEnd = commitmentDates.commitmentEnd;
+      // Use Date objects directly from getCommitmentDates
+      const commitmentStart = commitmentDates.commitmentStartDate;
+      const commitmentEnd = commitmentDates.commitmentEndDate;
       
       // Find commitments where the deal's commitment period overlaps with the selected month
       const dealsInMonth = await Deal.find({
@@ -1330,8 +1331,9 @@ router.get('/deals-report', isMemberAdmin, async (req, res) => {
       
       // Get commitment dates for this month and year
       const commitmentDates = getCommitmentDates(monthName, filterYear);
-      const commitmentStart = commitmentDates.commitmentStart;
-      const commitmentEnd = commitmentDates.commitmentEnd;
+      // Use Date objects directly from getCommitmentDates
+      const commitmentStart = commitmentDates.commitmentStartDate;
+      const commitmentEnd = commitmentDates.commitmentEndDate;
       
       // Filter deals where commitment period overlaps with the selected month's commitment period
       dateQuery = {
