@@ -705,12 +705,7 @@ const logCollaboratorAction = async (req, action, resource = '', context = {}) =
     
     try {
         // Check if logging feature is enabled
-        if (!(await isFeatureEnabled('LOGGING'))) {
-            console.log('📝 Logging feature is disabled. Log would have been created:', {
-                action,
-                resource,
-                context
-            });
+        if (!(await isFeatureEnabled('LOGGING'))) {           
             return { success: true, log: { _id: 'disabled' }, message: 'Logging disabled' }; // Return mock success
         }
 

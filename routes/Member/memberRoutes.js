@@ -8,6 +8,7 @@ const Favorite = require('../../models/Favorite');
 const bcrypt = require('bcryptjs');
 const { isMemberAdmin, getCurrentUserContext,isAuthenticated } = require('../../middleware/auth');
 const { logCollaboratorAction, logError } = require('../../utils/collaboratorLogger');
+const { MONTHS } = require('../../utils/monthMapping');
 
 // Get member stats
 router.get('/stats', isMemberAdmin, async (req, res) => {
@@ -1475,6 +1476,319 @@ router.get('/deals-report', isMemberAdmin, async (req, res) => {
     console.error('Error fetching deals report:', error);
     await logError(req, 'view_deals_report', 'report', error);
     res.status(500).json({ message: 'Error fetching deals report' });
+  }
+});
+
+// Get approved deals report for a specific month
+router.get('/approved-deals-report', isMemberAdmin, async (req, res) => {
+  try {
+    const { currentUser, originalUser, isImpersonating } = getCurrentUserContext(req);
+    const userId = currentUser.id;
+
+    const { month, distributorId, allMonths } = req.query;
+
+    // Parse month and calculate date range (only if not all months)
+    let monthName, year, rangeStart, rangeEnd;
+
+    if (allMonths === 'true') {
+      // For all months, don't require month parameter and don't calculate date range
+      console.log('=== ALL MONTHS MODE - No date filtering ===');
+    } else {
+      if (!month) {
+        return res.status(400).json({ message: 'Month parameter is required' });
+      }
+
+      // Parse month value (format: "Month Year", e.g., "October 2025")
+      // This is the actual month (previous month of display month)
+      const monthParts = month.trim().split(' ');
+      if (monthParts.length !== 2) {
+        return res.status(400).json({ message: 'Invalid month format. Expected "Month Year"' });
+      }
+
+      monthName = monthParts[0];
+      year = parseInt(monthParts[1], 10);
+
+      if (isNaN(year) || !MONTHS.includes(monthName)) {
+        return res.status(400).json({ message: 'Invalid month or year' });
+      }
+
+      // Calculate date range: 5th to 25th of the month
+      const monthIndex = MONTHS.indexOf(monthName);
+      rangeStart = new Date(year, monthIndex, 5, 0, 0, 0, 0);
+      rangeEnd = new Date(year, monthIndex, 25, 23, 59, 59, 999);
+
+      console.log('=== DATE RANGE CALCULATION ===');
+      console.log('Month:', monthName, 'Year:', year, 'Index:', monthIndex);
+      console.log('Range Start:', rangeStart.toISOString());
+      console.log('Range End:', rangeEnd.toISOString());
+    }
+
+    // Find ALL deals whose deal dates overlap with 5th-25th (or all deals if allMonths is true)
+    // Use dealStartAt and dealEndsAt (not commitment dates)
+    // Don't filter by status - include both active and inactive deals
+    let dealQuery = {};
+
+    if (allMonths !== 'true') {
+      // Apply date filtering only when not in all months mode
+      dealQuery.dealStartAt = { $lte: rangeEnd };
+      dealQuery.dealEndsAt = { $gte: rangeStart };
+    }
+
+    // Filter by distributor if provided
+    if (distributorId) {
+      dealQuery.distributor = distributorId;
+    }
+
+    // Fetch all deals matching the date range
+    const deals = await Deal.find(dealQuery)
+      .populate('distributor', 'businessName name email')
+      .sort({ 'distributor.businessName': 1, name: 1 })
+      .lean();
+  
+
+    // Get ALL commitments for these deals (not just approved ones)
+    const dealIds = deals.map(d => d._id);
+
+    const allCommitments = await Commitment.find({
+      dealId: { $in: dealIds }
+    }).lean();
+
+    // Create maps for commitments
+    const dealAllCommitmentsMap = {};
+    const dealApprovedCommitmentsMap = {};
+    const dealDeclinedCommitmentsMap = {};
+
+    allCommitments.forEach(commitment => {
+      const dealId = commitment.dealId.toString();
+      if (!dealAllCommitmentsMap[dealId]) {
+        dealAllCommitmentsMap[dealId] = [];
+      }
+      if (!dealApprovedCommitmentsMap[dealId]) {
+        dealApprovedCommitmentsMap[dealId] = [];
+      }
+      if (!dealDeclinedCommitmentsMap[dealId]) {
+        dealDeclinedCommitmentsMap[dealId] = [];
+      }
+
+      dealAllCommitmentsMap[dealId].push(commitment);
+
+      if (commitment.status === 'approved') {
+        dealApprovedCommitmentsMap[dealId].push(commitment);
+      } else if (commitment.status === 'declined' || commitment.status === 'cancelled') {
+        dealDeclinedCommitmentsMap[dealId].push(commitment);
+      }
+    });
+
+    // Get user's commitments for these deals
+    const userCommitments = await Commitment.find({
+      userId,
+      dealId: { $in: dealIds }
+    }).lean();
+
+    // Create a map of dealId -> user's commitment
+    const userCommitmentMap = {};
+    userCommitments.forEach(commitment => {
+      const dealId = commitment.dealId.toString();
+      userCommitmentMap[dealId] = commitment;
+    });
+
+    // Process ALL deals that fall within the date range
+    const approvedDeals = [];
+    const declinedDeals = [];
+    const pendingDeals = [];
+
+    for (const deal of deals) {
+      const dealId = deal._id.toString();
+      const allCommitmentsForDeal = dealAllCommitmentsMap[dealId] || [];
+      const approvedCommitmentsForDeal = dealApprovedCommitmentsMap[dealId] || [];
+      const declinedCommitmentsForDeal = dealDeclinedCommitmentsMap[dealId] || [];
+
+      // Determine deal status with majority rule for mixed cases
+      let dealStatus = 'pending';
+      let statusReason = 'no_commitments';
+
+      if (deal.bulkAction && deal.bulkStatus === 'approved') {
+        dealStatus = 'approved';
+        statusReason = 'bulk_approved';
+      } else if (deal.bulkAction && deal.bulkStatus === 'rejected') {
+        dealStatus = 'declined';
+        statusReason = 'bulk_declined';
+      } else if (allCommitmentsForDeal.length > 0) {
+        // Check if all commitments are approved
+        if (approvedCommitmentsForDeal.length === allCommitmentsForDeal.length) {
+          dealStatus = 'approved';
+          statusReason = 'all_approved';
+        } else if (declinedCommitmentsForDeal.length === allCommitmentsForDeal.length) {
+          dealStatus = 'declined';
+          statusReason = 'all_declined';
+        } else {
+          // Mixed case - majority wins
+          if (approvedCommitmentsForDeal.length > declinedCommitmentsForDeal.length) {
+            dealStatus = 'approved';
+            statusReason = 'majority_approved';
+          } else if (declinedCommitmentsForDeal.length > approvedCommitmentsForDeal.length) {
+            dealStatus = 'declined';
+            statusReason = 'majority_declined';
+          } else {
+            // Equal number - consider pending
+            dealStatus = 'pending';
+            statusReason = 'equal_split';
+          }
+        }
+      }
+
+      // Get user's commitment for this deal (if any)
+      const userCommitment = userCommitmentMap[dealId];
+
+      // Process each size in the deal
+      const dealSizes = deal.sizes || [];
+
+      for (const size of dealSizes) {
+        // Calculate bottle price (discountPrice / bottlesPerCase)
+        const bottlesPerCase = size.bottlesPerCase || 1;
+        const bottlePrice = size.discountPrice / bottlesPerCase;
+
+        // Get user's commitment quantity for this size (if any)
+        let userCommitmentQuantity = 0;
+        if (userCommitment) {
+          const sizeCommitments = userCommitment.modifiedByDistributor && userCommitment.modifiedSizeCommitments
+            ? userCommitment.modifiedSizeCommitments
+            : userCommitment.sizeCommitments || [];
+
+          const userSizeCommitment = sizeCommitments.find(sc => sc.size === size.size);
+          if (userSizeCommitment) {
+            userCommitmentQuantity = userSizeCommitment.quantity || 0;
+          }
+        }
+
+        const dealData = {
+          dealId: deal._id,
+          dealName: deal.name,
+          category: deal.category,
+          distributor: {
+            id: deal.distributor._id,
+            name: deal.distributor.businessName || deal.distributor.name,
+            email: deal.distributor.email
+          },
+          size: size.size,
+          sizeName: size.name || size.size,
+          bottlePrice: parseFloat(bottlePrice.toFixed(2)),
+          casePrice: size.discountPrice,
+          bottlesPerCase: bottlesPerCase,
+          originalBottlePrice: size.originalCost / bottlesPerCase,
+          userCommitmentQuantity: userCommitmentQuantity,
+          hasUserCommitment: userCommitmentQuantity > 0,
+          dealStatus: dealStatus,
+          statusReason: statusReason,
+          totalCommitments: allCommitmentsForDeal.length,
+          approvedCommitments: approvedCommitmentsForDeal.length,
+          declinedCommitments: declinedCommitmentsForDeal.length
+        };
+
+        // Add to appropriate category
+        if (dealStatus === 'approved') {
+          approvedDeals.push(dealData);
+        } else if (dealStatus === 'declined') {
+          declinedDeals.push(dealData);
+        } else {
+          pendingDeals.push(dealData);
+        }
+      }
+    }
+
+    // Helper function to group deals by distributor
+    const groupDealsByDistributor = (deals) => {
+      const grouped = {};
+      deals.forEach(deal => {
+        const distributorId = deal.distributor.id.toString();
+        if (!grouped[distributorId]) {
+          grouped[distributorId] = {
+            distributor: deal.distributor,
+            deals: []
+          };
+        }
+        grouped[distributorId].deals.push(deal);
+      });
+
+      // Convert to array and sort
+      const distributorGroups = Object.values(grouped).map(group => ({
+        distributor: group.distributor,
+        deals: group.deals.sort((a, b) => {
+          // Sort by deal name, then by size name
+          if (a.dealName !== b.dealName) {
+            return a.dealName.localeCompare(b.dealName);
+          }
+          return (a.sizeName || a.size).localeCompare(b.sizeName || b.size);
+        })
+      }));
+
+      // Sort distributor groups by distributor name
+      distributorGroups.sort((a, b) =>
+        a.distributor.name.localeCompare(b.distributor.name)
+      );
+
+      return distributorGroups;
+    };
+
+    // Group each category by distributor
+    const approvedDistributorGroups = groupDealsByDistributor(approvedDeals);
+    const declinedDistributorGroups = groupDealsByDistributor(declinedDeals);
+    const pendingDistributorGroups = groupDealsByDistributor(pendingDeals);
+
+    console.log('=== FINAL RESULT ===');
+    console.log('Approved deals:', approvedDeals.length);
+    console.log('Declined deals:', declinedDeals.length);
+    console.log('Pending deals:', pendingDeals.length);
+    console.log('Approved distributors:', approvedDistributorGroups.length);
+    console.log('Declined distributors:', declinedDistributorGroups.length);
+    console.log('Pending distributors:', pendingDistributorGroups.length);
+
+    if (approvedDeals.length > 0) {
+      console.log('Sample approved deals:');
+      approvedDeals.slice(0, 2).forEach((deal, index) => {
+        console.log(`${index + 1}. ${deal.dealName} (${deal.sizeName || deal.size}) - $${deal.bottlePrice} - Status: ${deal.dealStatus} (${deal.statusReason})`);
+      });
+    }
+
+    // Log the action
+    await logCollaboratorAction(req, 'view_approved_deals_report', 'report', {
+      userId: userId,
+      month: month,
+      distributorId: distributorId || 'all',
+      approvedDeals: approvedDeals.length,
+      declinedDeals: declinedDeals.length,
+      pendingDeals: pendingDeals.length,
+      additionalInfo: `Viewed approved deals report for ${month}: ${approvedDeals.length} approved, ${declinedDeals.length} declined, ${pendingDeals.length} pending`
+    });
+
+    res.json({
+      month: allMonths === 'true' ? 'all_months' : month,
+      monthName: allMonths === 'true' ? 'All Months' : monthName,
+      year: allMonths === 'true' ? null : year,
+      dateRange: allMonths === 'true' ? null : {
+        start: rangeStart.toISOString(),
+        end: rangeEnd.toISOString()
+      },
+      approvedDeals: {
+        distributorGroups: approvedDistributorGroups,
+        totalDeals: approvedDeals.length,
+        totalDistributors: approvedDistributorGroups.length
+      },
+      declinedDeals: {
+        distributorGroups: declinedDistributorGroups,
+        totalDeals: declinedDeals.length,
+        totalDistributors: declinedDistributorGroups.length
+      },
+      pendingDeals: {
+        distributorGroups: pendingDistributorGroups,
+        totalDeals: pendingDeals.length,
+        totalDistributors: pendingDistributorGroups.length
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching approved deals report:', error);
+    await logError(req, 'view_approved_deals_report', 'report', error);
+    res.status(500).json({ message: 'Error fetching approved deals report' });
   }
 });
 
