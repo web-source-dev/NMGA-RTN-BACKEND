@@ -72,6 +72,7 @@ app.use('/auth/add-user', require('./routes/auth/addUser')); // Ensure addUser r
 app.use('/common', require('./routes/Common/common'));
 app.use('/deals', require('./routes/Deals/Deals'));
 app.use('/deals', require('./routes/Deals/MemberCommitments'));
+app.use('/distributor', require('./routes/Deals/DistributorReports'));
 app.use('/payments', require('./payments/payment'));
 app.use('/member', require('./routes/Member/memberRoutes'));
 app.use('/chat', require('./routes/Deals/Chat'));
